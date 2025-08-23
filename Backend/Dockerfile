@@ -19,4 +19,4 @@ COPY . .
 
 # Tell Docker what command to run when the container starts
 # This command runs your Alembic migrations and then starts the Uvicorn server
-CMD ["sh", "-c", "python -m alembic upgrade head && PYTHONPATH=/app uvicorn src.main:app --host 0.0.0.0 --port $PORT"]
+CMD ["sh", "-c", "python -m alembic upgrade head && export PYTHONPATH=/app && uvicorn main:app --host 0.0.0.0 --port $PORT"]
