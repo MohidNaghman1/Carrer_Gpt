@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     GOOGLE_API_KEY: str
     GROQ_API_KEY: str
     TAVILY_API_KEY: str
-
+    FRONTEND_ORIGIN: str
     # --- JWT / Security Settings ---
     # It's better to load these from .env as well
     SECRET_KEY: str

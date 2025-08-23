@@ -21,7 +21,8 @@ app = FastAPI(
 )
 
 origins = [
-    "http://localhost:3000",  # The origin of our Next.js frontend
+    "http://localhost:3000", # For local development
+    settings.FRONTEND_ORIGIN,  # Your deployed frontend URL from environment
 ]
 
 app.add_middleware(
