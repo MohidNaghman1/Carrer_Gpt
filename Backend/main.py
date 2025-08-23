@@ -13,6 +13,7 @@ from api.routes import chat, auth
 from fastapi.middleware.cors import CORSMiddleware # If you have CORS
 from fastapi import FastAPI
 from api.routes import chat, auth # Import the new auth router
+from core.config import settings 
 
 app = FastAPI(
     title="CareerGPT API",
