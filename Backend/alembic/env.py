@@ -1,8 +1,12 @@
 from logging.config import fileConfig
 from db.models import Base
-from sqlalchemy import engine_from_config
+from sqlalchemy import create_engine
 from sqlalchemy import pool
+import os
+from dotenv import load_dotenv
 
+# Load the .env file for local development. In production, Render provides these.
+load_dotenv() 
 from alembic import context
 
 # this is the Alembic Config object, which provides
@@ -57,12 +61,16 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
-    connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
+    # Get the database URL directly from the environment variable.
+    # This is the ONLY source of truth for the database connection now.
+    db_url = os.getenv("DATABASE_URL")
+    if not db_url:
+        raise ValueError("DATABASE_URL environment variable is not set!")
 
+    # Create the SQLAlchemy engine using the URL from the environment.
+    connectable = create_engine(db_url)
+
+    # The rest of the function remains the same.
     with connectable.connect() as connection:
         context.configure(
             connection=connection, target_metadata=target_metadata
