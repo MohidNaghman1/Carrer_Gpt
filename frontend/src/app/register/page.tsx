@@ -123,6 +123,15 @@ export default function RegisterPage() {
             </button>
           </div>
         </form>
+        <div className="mt-4 p-4 bg-yellow-100 border border-yellow-300 rounded-md text-sm text-left">
+            <p className="font-bold">DEBUGGING INFORMATION:</p>
+            <p>
+                API URL Used:{' '}
+                <strong className="break-all">
+                    {process.env.NEXT_PUBLIC_API_BASE_URL || "VARIABLE NOT SET!"}
+                </strong>
+            </p>
+        </div>
         <p className="mt-4 text-sm text-center text-gray-600">
           Already have an account?{" "}
           <Link

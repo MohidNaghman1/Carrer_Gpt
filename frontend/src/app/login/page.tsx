@@ -114,7 +114,7 @@ export default function LoginPage() {
             </button>
           </div>
         </form>
-         <div className="mt-4 p-4 bg-yellow-100 border border-yellow-300 rounded-md text-sm text-left">
+        <div className="mt-4 p-4 bg-yellow-100 border border-yellow-300 rounded-md text-sm text-left">
             <p className="font-bold">DEBUGGING INFORMATION:</p>
             <p>
                 API URL Used:{' '}
