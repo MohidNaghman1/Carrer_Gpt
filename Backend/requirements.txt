@@ -1,0 +1,19 @@
+fastapi
+uvicorn[standard]
+sqlalchemy[asyncio]
+pymysql
+alembic
+pydantic-settings
+passlib[bcrypt]
+python-jose
+python-dotenv
+langchain
+langgraph
+langchain-groq
+langchain-google-genai
+langchain-community
+faiss-cpu
+tavily-python
+nest_asyncio
+# Add any file parsing libraries like 'pymupdf' if you use them
+pymupdf 
