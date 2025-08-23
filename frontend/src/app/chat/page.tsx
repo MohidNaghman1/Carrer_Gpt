@@ -1,4 +1,5 @@
 // frontend/src/app/chat/page.tsx
+'use client';
 
 export default function ChatPage() {
   return (
