@@ -1,16 +1,17 @@
+// frontend/src/app/login/page.tsx
 'use client';
 
 import { useState } from 'react';
-import { useAuth } from '../../context/AuthContext'; // Import your hook
-import apiClient from '../../services/api';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import apiClient from '@/services/api'; // Using clean path alias
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth(); // Get the login function from the context
+  const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,22 +27,25 @@ export default function LoginPage() {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       });
 
-      // THE FIX: Call the context's login function.
-      // It handles saving the token and redirecting centrally.
-      login(response.data.access_token);
+      const { access_token } = response.data;
+      localStorage.setItem('accessToken', access_token);
+      router.push('/chat');
 
-    } catch (err) {
-      setError('Incorrect email or password.');
-      console.error("Login failed:", err);
+    } catch (err: any) {
+      if (err.response && err.response.status === 401) {
+        setError('Incorrect email or password. Please try again.');
+      } else {
+        setError('An unexpected error occurred. Please try again later.');
+        console.error("Login failed:", err);
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  
   return (
     <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50">
-      <div className="w-full max-w-md p-8 space-y-8 bg-white/90 rounded-2xl shadow-xl border border-gray-100">
+      <div className="w-full max-w-md p-8 space-y-8 bg-white/90 rounded-2xl shadow-xl border border-gray-100 backdrop-blur-sm">
         <div className="text-center">
           <h1 className="text-4xl font-extrabold tracking-tight text-gray-900">
             Welcome Back
@@ -70,19 +74,6 @@ export default function LoginPage() {
             </button>
           </div>
         </form>
-
-        {/* ===== THIS IS THE ONLY CHANGE NEEDED ===== */}
-        <div className="mt-4 p-4 bg-yellow-100 border border-yellow-300 rounded-md text-sm text-left">
-            <p className="font-bold">DEBUGGING INFORMATION:</p>
-            <p>
-                API URL Used:{' '}
-                <strong className="break-all">
-                    {process.env.NEXT_PUBLIC_API_BASE_URL || "VARIABLE NOT SET!"}
-                </strong>
-            </p>
-        </div>
-        {/* ======================================= */}
-
         <p className="mt-4 text-sm text-center text-gray-600">
           Don&apos;t have an account?{" "}
           <Link href="/register" className="font-semibold text-indigo-600 hover:text-indigo-500 transition-colors">
