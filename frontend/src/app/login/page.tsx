@@ -2,8 +2,8 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation"; // Import the router
-import apiClient from "@/services/api"; // Import our API client
+import { useRouter } from "next/navigation";
+import apiClient from "../../services/api"; // Using relative path for now
 import Link from "next/link";
 
 export default function LoginPage() {
@@ -19,9 +19,8 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      // Backend's /auth/token endpoint expects form data, not JSON
       const formData = new URLSearchParams();
-      formData.append("username", email); // FastAPI's form expects 'username'
+      formData.append("username", email);
       formData.append("password", password);
 
       const response = await apiClient.post("/auth/token", formData, {
@@ -31,19 +30,15 @@ export default function LoginPage() {
       });
 
       const { access_token } = response.data;
-
-      // Save the token to localStorage for future API calls
       localStorage.setItem("accessToken", access_token);
-
-      // Redirect to the main chat page on successful login
       router.push("/chat");
+
     } catch (err: any) {
-      // Check the browser console (F12) for detailed CORS or network errors
       if (err.response && err.response.status === 401) {
         setError("Incorrect email or password. Please try again.");
       } else {
         setError("An unexpected error occurred. Please try again later.");
-        console.error("Login failed:", err); // Log the full error to the console
+        console.error("Login failed:", err);
       }
     } finally {
       setLoading(false);
@@ -62,58 +57,27 @@ export default function LoginPage() {
           </p>
         </div>
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-            
           <div className="space-y-4 rounded-md">
             <div>
-              <label htmlFor="email-address" className="sr-only">
-                Email address
-              </label>
-              <input
-                id="email-address"
-                name="email"
-                type="email"
-                autoComplete="email"
-                required
-                className="relative block w-full px-4 py-3 text-gray-900 placeholder-gray-400 border border-gray-300 rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-500 focus:z-10 sm:text-base transition-all shadow-sm"
-                placeholder="Email address"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
+              <label htmlFor="email-address" className="sr-only">Email address</label>
+              <input id="email-address" name="email" type="email" autoComplete="email" required className="relative block w-full px-4 py-3 text-gray-900 placeholder-gray-400 border border-gray-300 rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-500 focus:z-10 sm:text-base transition-all shadow-sm" placeholder="Email address" value={email} onChange={(e) => setEmail(e.target.value)} />
             </div>
             <div>
-              <label htmlFor="password" className="sr-only">
-                Password
-              </label>
-              <input
-                id="password"
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                required
-                className="relative block w-full px-4 py-3 text-gray-900 placeholder-gray-400 border border-gray-300 rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-500 focus:z-10 sm:text-base transition-all shadow-sm"
-                placeholder="Password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
+              <label htmlFor="password" className="sr-only">Password</label>
+              <input id="password" name="password" type="password" autoComplete="current-password" required className="relative block w-full px-4 py-3 text-gray-900 placeholder-gray-400 border border-gray-300 rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-500 focus:z-10 sm:text-base transition-all shadow-sm" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} />
             </div>
           </div>
 
-          {error && (
-            <p className="text-sm text-center text-red-600 font-medium">
-              {error}
-            </p>
-          )}
+          {error && (<p className="text-sm text-center text-red-600 font-medium">{error}</p>)}
 
           <div>
-            <button
-              type="submit"
-              disabled={loading}
-              className="relative flex justify-center w-full px-4 py-3 text-base font-semibold text-white bg-indigo-600 border border-transparent rounded-lg group hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-400 disabled:bg-indigo-300 disabled:cursor-not-allowed shadow-md transition-all"
-            >
+            <button type="submit" disabled={loading} className="relative flex justify-center w-full px-4 py-3 text-base font-semibold text-white bg-indigo-600 border border-transparent rounded-lg group hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-400 disabled:bg-indigo-300 disabled:cursor-not-allowed shadow-md transition-all">
               {loading ? "Signing in..." : "Sign in"}
             </button>
           </div>
         </form>
+
+        {/* ===== THIS IS THE ONLY CHANGE NEEDED ===== */}
         <div className="mt-4 p-4 bg-yellow-100 border border-yellow-300 rounded-md text-sm text-left">
             <p className="font-bold">DEBUGGING INFORMATION:</p>
             <p>
@@ -123,12 +87,11 @@ export default function LoginPage() {
                 </strong>
             </p>
         </div>
+        {/* ======================================= */}
+
         <p className="mt-4 text-sm text-center text-gray-600">
-          Don't have an account?{" "}
-          <Link
-            href="/register"
-            className="font-semibold text-indigo-600 hover:text-indigo-500 transition-colors"
-          >
+          Don&apos;t have an account?{" "}
+          <Link href="/register" className="font-semibold text-indigo-600 hover:text-indigo-500 transition-colors">
             Sign up
           </Link>
         </p>

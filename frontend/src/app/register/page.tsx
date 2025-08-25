@@ -26,19 +26,15 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      // Call the /auth/register endpoint, which expects JSON
       await apiClient.post("/auth/register", { email, password });
-
-      // On successful registration, redirect to the login page with a success message (optional)
       alert("Registration successful! Please sign in.");
       router.push("/login");
     } catch (err: any) {
-      // Check the browser console (F12) for detailed CORS or network errors
       if (err.response && err.response.data.detail) {
-        setError(err.response.data.detail); // Show error from backend (e.g., "Email already registered")
+        setError(err.response.data.detail);
       } else {
         setError("An unexpected error occurred during registration.");
-        console.error("Registration failed:", err); // Log the full error
+        console.error("Registration failed:", err);
       }
     } finally {
       setLoading(false);
@@ -59,70 +55,26 @@ export default function RegisterPage() {
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           <div className="space-y-4 rounded-md">
             <div>
-              <label htmlFor="email-address" className="sr-only">
-                Email address
-              </label>
-              <input
-                id="email-address"
-                name="email"
-                type="email"
-                autoComplete="email"
-                required
-                className="relative block w-full px-4 py-3 text-gray-900 placeholder-gray-400 border border-gray-300 rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-500 focus:z-10 sm:text-base transition-all shadow-sm"
-                placeholder="Email address"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
+              <label htmlFor="email-address" className="sr-only">Email address</label>
+              <input id="email-address" name="email" type="email" autoComplete="email" required className="relative block w-full px-4 py-3 text-gray-900 placeholder-gray-400 border border-gray-300 rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-500 focus:z-10 sm:text-base transition-all shadow-sm" placeholder="Email address" value={email} onChange={(e) => setEmail(e.target.value)} />
             </div>
             <div>
-              <label htmlFor="password" className="sr-only">
-                Password
-              </label>
-              <input
-                id="password"
-                name="password"
-                type="password"
-                autoComplete="new-password"
-                required
-                className={`relative block w-full px-4 py-3 text-gray-900 placeholder-gray-400 border rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-500 focus:z-10 sm:text-base transition-all shadow-sm ${
-                  passwordTouched && password.length < minPasswordLength
-                    ? "border-red-400"
-                    : "border-gray-300"
-                }`}
-                placeholder="Password (min 8 characters)"
-                value={password}
-                onChange={(e) => {
-                  setPassword(e.target.value);
-                  setPasswordTouched(true);
-                }}
-                minLength={minPasswordLength}
-              />
-              {passwordTouched &&
-                password.length > 0 &&
-                password.length < minPasswordLength && (
-                  <p className="mt-1 text-xs text-red-500">
-                    Password too short (min {minPasswordLength} characters)
-                  </p>
-                )}
+              <label htmlFor="password" className="sr-only">Password</label>
+              <input id="password" name="password" type="password" autoComplete="new-password" required className={`relative block w-full px-4 py-3 text-gray-900 placeholder-gray-400 border rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-500 focus:z-10 sm:text-base transition-all shadow-sm ${passwordTouched && password.length < minPasswordLength ? "border-red-400" : "border-gray-300"}`} placeholder="Password (min 8 characters)" value={password} onChange={(e) => { setPassword(e.target.value); setPasswordTouched(true); }} minLength={minPasswordLength} />
+              {passwordTouched && password.length > 0 && password.length < minPasswordLength && (<p className="mt-1 text-xs text-red-500">Password too short (min {minPasswordLength} characters)</p>)}
             </div>
           </div>
 
-          {error && (
-            <p className="text-sm text-center text-red-600 font-medium">
-              {error}
-            </p>
-          )}
+          {error && (<p className="text-sm text-center text-red-600 font-medium">{error}</p>)}
 
           <div>
-            <button
-              type="submit"
-              disabled={loading || password.length < minPasswordLength}
-              className="relative flex justify-center w-full px-4 py-3 text-base font-semibold text-white bg-indigo-600 border border-transparent rounded-lg group hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-400 disabled:bg-indigo-300 disabled:cursor-not-allowed shadow-md transition-all"
-            >
+            <button type="submit" disabled={loading || password.length < minPasswordLength} className="relative flex justify-center w-full px-4 py-3 text-base font-semibold text-white bg-indigo-600 border border-transparent rounded-lg group hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-400 disabled:bg-indigo-300 disabled:cursor-not-allowed shadow-md transition-all">
               {loading ? "Creating Account..." : "Create Account"}
             </button>
           </div>
         </form>
+
+        {/* ===== THIS IS THE ONLY CHANGE NEEDED ===== */}
         <div className="mt-4 p-4 bg-yellow-100 border border-yellow-300 rounded-md text-sm text-left">
             <p className="font-bold">DEBUGGING INFORMATION:</p>
             <p>
@@ -132,12 +84,11 @@ export default function RegisterPage() {
                 </strong>
             </p>
         </div>
+        {/* ======================================= */}
+
         <p className="mt-4 text-sm text-center text-gray-600">
           Already have an account?{" "}
-          <Link
-            href="/login"
-            className="font-semibold text-indigo-600 hover:text-indigo-500 transition-colors"
-          >
+          <Link href="/login" className="font-semibold text-indigo-600 hover:text-indigo-500 transition-colors">
             Sign in
           </Link>
         </p>
