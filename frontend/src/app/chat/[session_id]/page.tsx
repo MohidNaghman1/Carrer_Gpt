@@ -1,14 +1,12 @@
 "use client";
 
-import React from "react";
-import { useEffect, useState, useRef, useCallback } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import { useParams, useRouter } from "next/navigation";
 import apiClient from "../../../services/api";
 import { ChatMessage, ChatSession } from "../../../types";
 
-// --- Enhanced UI Components ---
-
+// --- Enhanced MessageBubble Component ---
 const MessageBubble = React.memo(
   ({
     message,
@@ -77,7 +75,7 @@ const MessageBubble = React.memo(
                       style={{ animationDelay: "0.2s" }}
                     />
                   </div>
-                  <span className="text-gray-500 text-sm">Thinking...</span>
+                  <span className="text-gray-500 text-sm">Analyzing...</span>
                 </div>
               ) : (
                 <div className="prose prose-sm max-w-none">
@@ -89,7 +87,6 @@ const MessageBubble = React.memo(
                   ) : (
                     <ReactMarkdown
                       components={{
-                        // Custom styling for markdown elements
                         h1: ({ children }) => (
                           <h1 className="text-xl font-bold mb-2 text-gray-900">
                             {children}
@@ -158,7 +155,9 @@ const MessageBubble = React.memo(
     );
   }
 );
+MessageBubble.displayName = "MessageBubble";
 
+// --- Enhanced MessageInput Component ---
 const EnhancedMessageInput = ({
   onSendMessage,
   onFileUpload,
@@ -227,7 +226,7 @@ const EnhancedMessageInput = ({
   };
 
   return (
-    <div className="bg-white border-t border-gray-200 p-4 shadow-lg">
+    <div className="bg-white border-t border-gray-200 p-4 shadow-lg relative">
       <div className="max-w-4xl mx-auto">
         <form onSubmit={handleSubmit} className="relative">
           <div
@@ -314,6 +313,7 @@ const EnhancedMessageInput = ({
   );
 };
 
+// --- Enhanced WelcomeScreen Component ---
 const EnhancedWelcomeScreen = ({
   onSendMessage,
   onFileUpload,
@@ -392,6 +392,94 @@ const EnhancedWelcomeScreen = ({
   );
 };
 
+// --- Performance-Optimized Streaming Component ---
+const StreamingBubble = ({ 
+  reader, 
+  onStreamEnd 
+}: { 
+  reader: ReadableStreamDefaultReader<Uint8Array>; 
+  onStreamEnd: (fullContent: string) => void; 
+}) => {
+  const [content, setContent] = useState("");
+  const isStreaming = useRef(true);
+
+  useEffect(() => {
+    const stream = async () => {
+      const decoder = new TextDecoder();
+      let fullResponse = "";
+      let buffer = "";
+
+      while (isStreaming.current) {
+        try {
+          const { value, done } = await reader.read();
+          if (done) {
+            isStreaming.current = false;
+            onStreamEnd(fullResponse);
+            break;
+          }
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || "";
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const dataStr = line.slice(6).trim();
+              if (dataStr === "[DONE]") {
+                isStreaming.current = false;
+                onStreamEnd(fullResponse);
+                break;
+              }
+              try {
+                const data = JSON.parse(dataStr);
+                if (data.token) {
+                  fullResponse += data.token;
+                  setContent(fullResponse);
+                }
+                if (data.error) {
+                  throw new Error(data.error);
+                }
+                if (data.event === 'done') {
+                  isStreaming.current = false;
+                  onStreamEnd(fullResponse);
+                  break;
+                }
+              } catch (parseError) {
+                console.warn("Failed to parse stream data:", dataStr);
+              }
+            }
+          }
+        } catch (error: any) {
+          console.error("Stream error:", error);
+          isStreaming.current = false;
+          if (error.name !== 'AbortError') {
+            onStreamEnd(fullResponse + "\n\n[Error: Stream interrupted]");
+          }
+          break;
+        }
+      }
+    };
+
+    stream();
+
+    // Cleanup function
+    return () => {
+      isStreaming.current = false;
+    };
+  }, [reader, onStreamEnd]);
+
+  const streamingMessage: ChatMessage = {
+    id: Date.now(),
+    role: 'ai',
+    content,
+    session_id: 0,
+    timestamp: new Date().toISOString()
+  };
+
+  return <MessageBubble message={streamingMessage} streaming={true} />;
+};
+StreamingBubble.displayName = "StreamingBubble";
+
 // --- Main Enhanced Chat Component ---
 export default function EnhancedChatSessionPage() {
   const params = useParams();
@@ -402,39 +490,116 @@ export default function EnhancedChatSessionPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [session, setSession] = useState<ChatSession | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [streamingMessageId, setStreamingMessageId] = useState<number | null>(null);
+  const [streamReader, setStreamReader] = useState<ReadableStreamDefaultReader<Uint8Array> | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [retryCount, setRetryCount] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  // Enhanced scroll to bottom with smooth behavior
   const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ 
-      behavior: "smooth",
-      block: "end"
-    });
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, []);
 
   useEffect(() => {
     const timeoutId = setTimeout(scrollToBottom, 100);
     return () => clearTimeout(timeoutId);
-  }, [messages, isLoading, scrollToBottom]);
+  }, [messages, isLoading, streamReader, scrollToBottom]);
 
-  // Enhanced error handling with retry logic
-  const handleError = useCallback((error: any, context: string) => {
-    console.error(`Error in ${context}:`, error);
-    const errorMessage = error?.response?.data?.detail || error?.message || "An unexpected error occurred";
-    setError(errorMessage);
+  // Load session data
+  useEffect(() => {
+    if (!isNewChat && session_id && typeof session_id === "string") {
+      setIsLoading(true);
+      apiClient.get(`/chat/${session_id}`)
+        .then(response => {
+          setSession(response.data);
+          setMessages(response.data.messages || []);
+        })
+        .catch(error => {
+          console.error("Failed to fetch chat session:", error);
+          setError("Failed to load chat session");
+          router.push("/chat/new");
+        })
+        .finally(() => setIsLoading(false));
+    } else {
+      setMessages([]);
+      setSession(null);
+    }
+  }, [session_id, isNewChat, router]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      if (streamReader) {
+        streamReader.cancel();
+      }
+    };
+  }, [streamReader]);
+
+  const handleFileUpload = async (file: File) => {
+    setIsLoading(true);
+    setError(null);
     
-    // Auto-clear error after 5 seconds
-    setTimeout(() => setError(null), 5000);
-  }, []);
+    const optimisticMsg: ChatMessage = {
+      id: Date.now(),
+      role: "human" as const,
+      content: `📄 Analyzing uploaded resume: ${file.name}...`,
+      session_id: 0,
+      timestamp: new Date().toISOString()
+    };
+    setMessages(prev => [...prev, optimisticMsg]);
 
-  // Enhanced streaming with better error handling and reconnection
+    const formData = new FormData();
+    formData.append("resume", file);
+
+    try {
+      if (isNewChat) {
+        // Create new session with resume analysis
+        const response = await apiClient.post("/chat/resume-analysis", formData, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
+        const sessionData: ChatSession = response.data;
+        
+        router.replace(`/chat/${sessionData.id}`);
+        setSession(sessionData);
+        setMessages(sessionData.messages || []);
+      } else {
+        // Add resume analysis to existing session
+        await apiClient.post(`/chat/${session_id}/resume-analysis`, formData, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
+
+        // Refresh session data to get updated messages
+        const updatedResponse = await apiClient.get(`/chat/${session_id}`);
+        setSession(updatedResponse.data);
+        setMessages(updatedResponse.data.messages || []);
+      }
+    } catch (error: any) {
+      console.error("Failed to upload resume:", error);
+      setError(error?.response?.data?.detail || "Failed to analyze resume. Please try again.");
+      
+      // Remove optimistic message on error
+      setMessages(prev => prev.filter(m => m.id !== optimisticMsg.id));
+      
+      // Add error message
+      const errorMessage: ChatMessage = {
+        id: Date.now() + 1,
+        role: "ai" as const,
+        content: "Sorry, I encountered an error processing your resume. Please try again with a different PDF file.",
+        session_id: 0,
+        timestamp: new Date().toISOString(),
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
   const handleSendMessage = async (userMessageContent: string) => {
     setIsLoading(true);
     setError(null);
+    setStreamReader(null);
 
     // Cancel any ongoing request
     if (abortControllerRef.current) {
@@ -443,227 +608,77 @@ export default function EnhancedChatSessionPage() {
 
     const optimisticUserMessage: ChatMessage = {
       id: Date.now(),
-      role: "human",
+      role: "human" as const,
       content: userMessageContent,
       session_id: 0,
-      timestamp: new Date().toISOString(),
+      timestamp: new Date().toISOString()
     };
-    setMessages((prev) => [...prev, optimisticUserMessage]);
+    setMessages(prev => [...prev, optimisticUserMessage]);
 
     try {
-      let currentSessionId = isNewChat ? null : (session_id as string);
-
       if (isNewChat) {
         // Create new session with first message
         const response = await apiClient.post("/chat/", {
           first_message: userMessageContent,
         });
         const newSession: ChatSession = response.data;
-        currentSessionId = newSession.id.toString();
-
-        router.replace(`/chat/${currentSessionId}`, { scroll: false });
+        router.replace(`/chat/${newSession.id}`);
         setSession(newSession);
         setMessages(newSession.messages || []);
         setIsLoading(false);
         return;
       }
 
-      if (currentSessionId) {
-        // Enhanced streaming for existing chats
-        abortControllerRef.current = new AbortController();
-        const token = localStorage.getItem("accessToken");
-        const url = `${apiClient.defaults.baseURL}/chat/${currentSessionId}/messages/stream`;
+      // Stream response for existing session
+      abortControllerRef.current = new AbortController();
+      const token = localStorage.getItem("accessToken");
+      const url = `${apiClient.defaults.baseURL}/chat/${session_id}/messages/stream`;
+      
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token && { Authorization: `Bearer ${token}` })
+        },
+        body: JSON.stringify({ content: userMessageContent }),
+        signal: abortControllerRef.current.signal
+      });
 
-        const response = await fetch(url, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Accept: "text/event-stream",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          body: JSON.stringify({ content: userMessageContent }),
-          signal: abortControllerRef.current.signal,
-        });
-
-        if (!response.ok || !response.body) {
-          throw new Error(`Stream request failed: ${response.status}`);
-        }
-
-        const aiMessageId = Date.now() + 1;
-        const aiPlaceholder: ChatMessage = {
-          id: aiMessageId,
-          role: "ai",
-          content: "",
-          session_id: Number(currentSessionId),
-          timestamp: new Date().toISOString(),
-        };
-        setMessages((prev) => [...prev, aiPlaceholder]);
-        setStreamingMessageId(aiMessageId);
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || "";
-
-          for (const line of lines) {
-            if (line.startsWith("data: ")) {
-              const dataStr = line.slice(6).trim();
-              if (dataStr === "[DONE]") {
-                setStreamingMessageId(null);
-                break;
-              }
-              try {
-                const data = JSON.parse(dataStr);
-                if (data.token) {
-                  setMessages((prev) =>
-                    prev.map((m) =>
-                      m.id === aiMessageId
-                        ? { ...m, content: m.content + data.token }
-                        : m
-                    )
-                  );
-                }
-                if (data.error) {
-                  throw new Error(data.error);
-                }
-                if (data.event === 'done') {
-                  setStreamingMessageId(null);
-                }
-              } catch (parseError) {
-                console.warn("Failed to parse stream data:", dataStr);
-              }
-            }
-          }
-        }
-        
-        setStreamingMessageId(null);
+      if (!response.ok || !response.body) {
+        throw new Error(`Stream request failed: ${response.status}`);
       }
+
+      setStreamReader(response.body.getReader());
+      
     } catch (error: any) {
       if (error.name === 'AbortError') {
         console.log('Request was aborted');
         return;
       }
-
-      handleError(error, "handleSendMessage");
       
-      // Remove optimistic message and add error message
-      const errorMessage: ChatMessage = {
-        id: Date.now() + 1,
-        role: "ai",
-        content: "Sorry, I encountered an error while processing your message. Please try again.",
-        session_id: isNewChat ? 0 : Number(session_id),
-        timestamp: new Date().toISOString(),
-      };
+      console.error("Failed to send message:", error);
+      setError("Failed to send message. Please try again.");
       
-      setMessages((prev) => [
-        ...prev.filter((m) => m.id !== optimisticUserMessage.id),
-        errorMessage,
-      ]);
-      
-      setStreamingMessageId(null);
-    } finally {
+      // Remove optimistic message on error
+      setMessages(prev => prev.filter(m => m.id !== optimisticUserMessage.id));
       setIsLoading(false);
-      abortControllerRef.current = null;
     }
   };
 
-  // Enhanced file upload with progress indication
-  const handleFileUpload = async (file: File) => {
-    setIsLoading(true);
-    setError(null);
-    
-    const optimisticUploadMessage: ChatMessage = {
+  const handleStreamEnd = useCallback((fullContent: string) => {
+    const finalAiMessage: ChatMessage = {
       id: Date.now(),
-      role: "human",
-      content: `📄 Analyzing uploaded resume: ${file.name}...`,
-      session_id: 0,
-      timestamp: new Date().toISOString(),
+      role: 'ai' as const,
+      content: fullContent,
+      session_id: typeof session_id === 'string' ? Number(session_id) : 0,
+      timestamp: new Date().toISOString()
     };
-    setMessages((prev) => [...prev, optimisticUploadMessage]);
-
-    const formData = new FormData();
-    formData.append("resume", file);
-
-    try {
-      let currentSessionId = isNewChat ? null : (session_id as string);
-
-      if (isNewChat) {
-        const response = await apiClient.post("/chat/resume-analysis", formData, {
-          headers: { "Content-Type": "multipart/form-data" },
-        });
-        const newSession: ChatSession = response.data;
-        currentSessionId = newSession.id.toString();
-
-        router.replace(`/chat/${currentSessionId}`);
-        setSession(newSession);
-        setMessages(newSession.messages || []);
-        return;
-      }
-      
-      if (currentSessionId) {
-        await apiClient.post(`/chat/${currentSessionId}/resume-analysis`, formData, {
-          headers: { "Content-Type": "multipart/form-data" },
-        });
-
-        const updatedSessionResponse = await apiClient.get(`/chat/${currentSessionId}`);
-        setSession(updatedSessionResponse.data);
-        setMessages(updatedSessionResponse.data.messages || []);
-      }
-    } catch (error) {
-      handleError(error, "handleFileUpload");
-      
-      setMessages((prev) => prev.filter((m) => m.id !== optimisticUploadMessage.id));
-      const errorMessage: ChatMessage = {
-        id: Date.now(),
-        role: "ai",
-        content: "Sorry, I encountered an error processing your resume. Please try again with a different PDF file.",
-        session_id: 0,
-        timestamp: new Date().toISOString(),
-      };
-      setMessages((prev) => [...prev, errorMessage]);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Load session data
-  useEffect(() => {
-    if (!isNewChat && session_id && typeof session_id === "string") {
-      const fetchMessages = async () => {
-        setIsLoading(true);
-        try {
-          const response = await apiClient.get(`/chat/${session_id}`);
-          setSession(response.data);
-          setMessages(response.data.messages || []);
-        } catch (error) {
-          handleError(error, "fetchMessages");
-          router.push("/chat/new");
-        } finally {
-          setIsLoading(false);
-        }
-      };
-      fetchMessages();
-    } else {
-      setMessages([]);
-      setSession(null);
-    }
-  }, [session_id, isNewChat, router, handleError]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-    };
-  }, []);
+    
+    setMessages(prev => [...prev, finalAiMessage]);
+    setStreamReader(null);
+    setIsLoading(false);
+    abortControllerRef.current = null;
+  }, [session_id]);
 
   // Welcome screen for new chats
   if (isNewChat && messages.length === 0) {
@@ -685,20 +700,18 @@ export default function EnhancedChatSessionPage() {
 
   return (
     <div className="h-full flex flex-col bg-gray-50">
-      {/* Enhanced Header */}
+      {/* Header */}
       <div className="bg-white border-b border-gray-200 px-6 py-4 shadow-sm flex-shrink-0">
         <div className="flex items-center justify-between">
           <h1 className="text-lg font-semibold text-gray-800 truncate">
             {session?.title || "Chat"}
           </h1>
-          <div className="flex items-center space-x-2">
-            {streamingMessageId && (
-              <div className="flex items-center space-x-2 text-sm text-gray-500">
-                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-                <span>AI is responding...</span>
-              </div>
-            )}
-          </div>
+          {streamReader && (
+            <div className="flex items-center space-x-2 text-sm text-gray-500">
+              <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+              <span>AI is responding...</span>
+            </div>
+          )}
         </div>
         
         {/* Error Banner */}
@@ -717,19 +730,20 @@ export default function EnhancedChatSessionPage() {
         )}
       </div>
 
-      {/* Enhanced Messages Area */}
+      {/* Messages Area */}
       <div className="flex-1 overflow-y-auto px-6 py-4">
         <div className="max-w-4xl mx-auto">
           {messages.map((msg, index) => (
             <MessageBubble
               key={msg.id}
               message={msg}
-              isTyping={isLoading && streamingMessageId === msg.id}
-              streaming={streamingMessageId === msg.id}
               isLatest={index === messages.length - 1}
             />
           ))}
-          {isLoading && !streamingMessageId && (
+          {streamReader && (
+            <StreamingBubble reader={streamReader} onStreamEnd={handleStreamEnd} />
+          )}
+          {isLoading && !streamReader && (
             <MessageBubble
               message={{
                 id: 0,
@@ -745,7 +759,7 @@ export default function EnhancedChatSessionPage() {
         </div>
       </div>
 
-      {/* Enhanced Input */}
+      {/* Input Area */}
       <div className="flex-shrink-0">
         <EnhancedMessageInput
           onSendMessage={handleSendMessage}
