@@ -1,50 +1,44 @@
-// frontend/src/app/login/page.tsx
-"use client";
+'use client';
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import apiClient from "../../services/api"; // Using relative path for now
-import Link from "next/link";
+import { useState } from 'react';
+import { useAuth } from '../../context/AuthContext'; // Import your hook
+import apiClient from '../../services/api';
+import Link from 'next/link';
 
 export default function LoginPage() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const router = useRouter();
+  const { login } = useAuth(); // Get the login function from the context
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
+    setError('');
     setLoading(true);
 
     try {
       const formData = new URLSearchParams();
-      formData.append("username", email);
-      formData.append("password", password);
+      formData.append('username', email);
+      formData.append('password', password);
 
-      const response = await apiClient.post("/auth/token", formData, {
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
+      const response = await apiClient.post('/auth/token', formData, {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       });
 
-      const { access_token } = response.data;
-      localStorage.setItem("accessToken", access_token);
-      router.push("/chat");
+      // THE FIX: Call the context's login function.
+      // It handles saving the token and redirecting centrally.
+      login(response.data.access_token);
 
-    } catch (err: any) {
-      if (err.response && err.response.status === 401) {
-        setError("Incorrect email or password. Please try again.");
-      } else {
-        setError("An unexpected error occurred. Please try again later.");
-        console.error("Login failed:", err);
-      }
+    } catch (err) {
+      setError('Incorrect email or password.');
+      console.error("Login failed:", err);
     } finally {
       setLoading(false);
     }
   };
 
+  
   return (
     <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50">
       <div className="w-full max-w-md p-8 space-y-8 bg-white/90 rounded-2xl shadow-xl border border-gray-100">

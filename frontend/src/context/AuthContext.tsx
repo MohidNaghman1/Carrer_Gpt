@@ -1,86 +1,61 @@
-"use client";
+// frontend/src/context/AuthContext.tsx
+'use client';
 
-import React, {
-  createContext,
-  useContext,
-  useMemo,
-  useState,
-  ReactNode,
-} from "react";
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { useRouter } from 'next/navigation';
 
-type AuthContextValue = {
-  user: unknown | null;
-  isAuthenticated: boolean;
-  isLoading: boolean;
-  hasHydrated: boolean;
-  login: (token: string, user?: unknown) => void;
-  logout: () => void;
-  setUser: (user: unknown | null) => void;
+interface AuthContextType {
+    isAuthenticated: boolean;
+    login: (token: string) => void;
+    logout: () => void;
+    isLoading: boolean;
+    hasHydrated: boolean; // To prevent initial render flicker
+}
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+export const AuthProvider = ({ children }: { children: ReactNode }) => {
+    const [isAuthenticated, setIsAuthenticated] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
+    const [hasHydrated, setHasHydrated] = useState(false); // Tracks if we've checked localStorage yet
+    const router = useRouter();
+
+    useEffect(() => {
+        // This effect runs only once on initial client load
+        try {
+            const token = localStorage.getItem('accessToken');
+            if (token) {
+                setIsAuthenticated(true);
+            }
+        } catch (error) {
+            console.error('Could not access localStorage:', error);
+        } finally {
+            setIsLoading(false);
+            setHasHydrated(true); // Mark that we have checked
+        }
+    }, []);
+
+    const login = (token: string) => {
+        localStorage.setItem('accessToken', token);
+        setIsAuthenticated(true);
+        router.push('/chat'); // Centralized redirect
+    };
+
+    const logout = () => {
+        localStorage.removeItem('accessToken');
+        setIsAuthenticated(false);
+        router.push('/login'); // Centralized redirect
+    };
+
+    const value = { isAuthenticated, login, logout, isLoading, hasHydrated };
+
+    return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
-const AuthContext = createContext<AuthContextValue | undefined>(undefined);
-
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [token, setToken] = useState<string | null>(null);
-  const [user, setUserState] = useState<unknown | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [hasHydrated, setHasHydrated] = useState<boolean>(false);
-
-  const isAuthenticated = Boolean(token);
-
-  // Hydrate token on client mount to avoid SSR mismatch
-  React.useEffect(() => {
-    try {
-      const t = localStorage.getItem("accessToken");
-      setToken(t);
-    } finally {
-      setHasHydrated(true);
+export const useAuth = () => {
+    const context = useContext(AuthContext);
+    if (context === undefined) {
+        throw new Error('useAuth must be used within an AuthProvider');
     }
-  }, []);
-
-  const login = (newToken: string, newUser?: unknown) => {
-    setIsLoading(true);
-    try {
-      localStorage.setItem("accessToken", newToken);
-      setToken(newToken);
-      if (newUser !== undefined) setUserState(newUser);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const logout = () => {
-    setIsLoading(true);
-    try {
-      localStorage.removeItem("accessToken");
-      setToken(null);
-      setUserState(null);
-      if (typeof window !== "undefined") {
-        window.location.href = "/login";
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const value = useMemo<AuthContextValue>(
-    () => ({
-      user,
-      isAuthenticated,
-      isLoading,
-      hasHydrated,
-      login,
-      logout,
-      setUser: setUserState,
-    }),
-    [user, isAuthenticated, isLoading, hasHydrated]
-  );
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-}
-
-export function useAuth() {
-  const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth must be used within an AuthProvider");
-  return ctx;
-}
+    return context;
+};
