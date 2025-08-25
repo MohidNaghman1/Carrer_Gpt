@@ -2,9 +2,12 @@
 import axios from 'axios';
 import toast from 'react-hot-toast';
 
+
+const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+
 // Create an axios instance with a base URL for our backend
 const apiClient = axios.create({
-    baseURL: 'http://localhost:8000', // The URL of our FastAPI backend
+    baseURL: apiBaseUrl, // The URL of our FastAPI backend
     headers: {
         'Content-Type': 'application/json',
     },
@@ -46,3 +49,5 @@ apiClient.interceptors.response.use(
         return Promise.reject(error);
     }
 );
+
+console.log(`API Client initialized with baseURL: ${apiBaseUrl}`);
