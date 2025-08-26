@@ -100,30 +100,35 @@ def process_user_message(db_session: Session, chat_session: models.ChatSession, 
         full_response += token
     return full_response
 
-def process_resume_file(db_session: Session, chat_session: models.ChatSession, file_stream) -> str:
+def process_resume_file(chat_session_id: int, file_bytes: bytes):
     """
-    Analyzes a resume file stream, saves the text and analysis to the DB.
+    Analyzes a resume and saves it. Runs in a background thread.
+    Creates its OWN thread-safe database session.
     """
-    print(f"--- Processing resume for session_id: {chat_session.id} ---")
-    resume_analyzer_agent = create_resume_analyzer_chain()
+    print(f"--- THREAD: Processing resume for session_id: {chat_session_id} ---")
+    db: Session = SessionLocal() # Create a new session for this thread
+    try:
+        chat_session = db.query(models.ChatSession).filter(models.ChatSession.id == chat_session_id).first()
+        if not chat_session:
+            print(f"--- THREAD ERROR: Session {chat_session_id} not found in DB.")
+            return
 
-    # Pass the stream directly to the parser
-    resume_text = extract_text_from_file(file_stream)
+        resume_analyzer_agent = create_resume_analyzer_chain()
+        file_like_object = BytesIO(file_bytes)
+        file_like_object.name = "resume.pdf" # For type detection
 
-    if "Error:" in resume_text:
-        return resume_text
+        resume_text = extract_text_from_file(file_like_object)
 
-    analysis_string = resume_analyzer_agent.invoke({"resume_text": resume_text})
+        if "Error:" in resume_text:
+            analysis_string = resume_text
+        else:
+            analysis_string = resume_analyzer_agent.invoke({"resume_text": resume_text})
 
-    chat_session.resume_text = resume_text
-    
-    db_human_message = models.ChatMessage(
-        session_id=chat_session.id, role="human", content=f"Please analyze my uploaded resume: {file_stream.name}"
-    )
-    db_ai_message = models.ChatMessage(
-        session_id=chat_session.id, role="ai", content=analysis_string
-    )
-    db_session.add_all([db_human_message, db_ai_message])
-    db_session.commit()
-
-    return analysis_string
+        chat_session.resume_text = resume_text
+        db_human_message = models.ChatMessage(session_id=chat_session.id, role="human", content=f"Analyzed resume: {file_like_object.name}")
+        db_ai_message = models.ChatMessage(session_id=chat_session.id, role="ai", content=analysis_string)
+        db.add_all([db_human_message, db_ai_message])
+        db.commit()
+        print(f"--- THREAD: Successfully processed and saved resume for session {chat_session_id}. ---")
+    finally:
+        db.close() # Always close the sessio

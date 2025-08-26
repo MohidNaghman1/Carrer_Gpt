@@ -180,26 +180,30 @@ async def create_session_with_resume_analysis(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    # ... (code to create new_chat_session is fine)
-    new_chat_session = models.ChatSession(...)
+    # 1. Create the initial chat session. This is the only DB work in this thread.
+    new_chat_session = models.ChatSession(
+        title=f"Resume Analysis: {resume.filename}", 
+        user_id=current_user.id
+    )
     db.add(new_chat_session)
     db.commit()
     db.refresh(new_chat_session)
 
-    # REMOVE this line: file_bytes = await resume.read()
+    file_bytes = await resume.read()
     
-    # THIS IS THE FIX
+    # 2. Call the service function in the background.
+    # We pass the ID, NOT the session object or the db connection.
     await run_in_threadpool(
         chat_service.process_resume_file, 
-        db_session=db,
-        chat_session=new_chat_session,
-        file_stream=resume.file # Pass the file stream object with the correct keyword
+        chat_session_id=new_chat_session.id,
+        file_bytes=file_bytes
     )
     
+    # 3. Refresh the object in the main thread to get the latest data
     db.refresh(new_chat_session)
     return new_chat_session
 
-# This endpoint adds a resume analysis to an EXISTING session
+
 @router.post("/{session_id}/resume-analysis", response_model=schemas.Message)
 async def add_resume_analysis_to_session(
     session_id: int,
@@ -209,28 +213,25 @@ async def add_resume_analysis_to_session(
 ):
     chat_session_obj = db.query(models.ChatSession).filter(models.ChatSession.id == session_id, models.ChatSession.user_id == current_user.id).first()
     if not chat_session_obj:
-        raise HTTPException(status_code=404, detail="Chat session not found or not authorized")
+        raise HTTPException(status_code=404, detail="Chat session not found")
     
+    file_bytes = await resume.read()
+
+    # Call the service, passing only the ID
     await run_in_threadpool(
         chat_service.process_resume_file, 
-        db_session=db,
-        chat_session=chat_session_obj,
-        file_stream=resume.file
+        chat_session_id=chat_session_obj.id,
+        file_bytes=file_bytes
     )
     
-    # --- CRITICAL FIX ---
-    # Refresh the object to make sure the current session has the new data
+    # Re-fetch the latest message to ensure it's from an updated session
     db.refresh(chat_session_obj)
-
-    # Now get the latest message from the refreshed object
-    latest_ai_message = sorted(chat_session_obj.messages, key=lambda m: m.timestamp, reverse=True)[0]
-    # --- END OF FIX ---
-    
-    if not latest_ai_message or latest_ai_message.role != 'ai':
-         raise HTTPException(status_code=500, detail="Could not retrieve AI analysis from database.")
+    latest_ai_message = db.query(models.ChatMessage).filter(
+        models.ChatMessage.session_id == session_id,
+        models.ChatMessage.role == 'ai'
+    ).order_by(models.ChatMessage.timestamp.desc()).first()
 
     return latest_ai_message
-
 
 @router.post("/{session_id}/messages/stream")
 def post_new_message_stream(
