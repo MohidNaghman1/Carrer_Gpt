@@ -8,20 +8,18 @@ interface AuthContextType {
     isAuthenticated: boolean;
     login: (token: string) => void;
     logout: () => void;
-    isLoading: boolean;
-    hasHydrated: boolean; // To prevent initial render flicker
+    isLoading: boolean; // This will represent the initial auth check
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
-    const [isLoading, setIsLoading] = useState(true);
-    const [hasHydrated, setHasHydrated] = useState(false); // Tracks if we've checked localStorage yet
+    const [isLoading, setIsLoading] = useState(true); // START in loading state
     const router = useRouter();
 
     useEffect(() => {
-        // This effect runs only once on initial client load
+        // This runs ONLY ONCE when the app first loads in the browser
         try {
             const token = localStorage.getItem('accessToken');
             if (token) {
@@ -30,24 +28,24 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         } catch (error) {
             console.error('Could not access localStorage:', error);
         } finally {
-            setIsLoading(false);
-            setHasHydrated(true); // Mark that we have checked
+            // CRITICAL: Set loading to false after we've checked the token
+            setIsLoading(false); 
         }
     }, []);
 
     const login = (token: string) => {
         localStorage.setItem('accessToken', token);
         setIsAuthenticated(true);
-        router.push('/chat'); // Centralized redirect
+        router.push('/chat');
     };
 
     const logout = () => {
         localStorage.removeItem('accessToken');
         setIsAuthenticated(false);
-        router.push('/login'); // Centralized redirect
+        router.push('/login');
     };
 
-    const value = { isAuthenticated, login, logout, isLoading, hasHydrated };
+    const value = { isAuthenticated, login, logout, isLoading };
 
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

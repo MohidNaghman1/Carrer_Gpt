@@ -1,7 +1,7 @@
 // frontend/src/app/chat/layout.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState,useCallback  } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import apiClient from "../../services/api"; // Use relative path for safety
@@ -97,23 +97,46 @@ export default function ChatLayout({
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { isAuthenticated, isLoading, hasHydrated, logout } = useAuth();
+  // Get the reliable state from our global AuthContext
+  const { isAuthenticated, isLoading, logout } = useAuth();
   const [sessions, setSessions] = useState<ChatSession[]>([]);
 
-  const refreshSessions = async () => {
-    const response = await apiClient.get<ChatSession[]>("/chat/");
-    setSessions(response.data);
-  };
+  // Memoize the refresh function so it doesn't get redefined on every render
+  const refreshSessions = useCallback(async () => {
+    // Only fetch if we are authenticated
+    if (isAuthenticated) {
+      try {
+        const response = await apiClient.get<ChatSession[]>("/chat/");
+        setSessions(response.data);
+      } catch (error) {
+        console.error("Failed to refresh sessions:", error);
+      }
+    }
+  }, [isAuthenticated]);
+
+  // This effect is now ONLY responsible for fetching data when things change.
+  useEffect(() => {
+    refreshSessions();
+  }, [pathname, refreshSessions]); // refreshSessions is stable due to useCallback
+
+  // This effect handles the initial authentication guard.
+  useEffect(() => {
+    // When the initial auth check is done...
+    if (!isLoading && !isAuthenticated) {
+      // ...and the user is NOT authenticated, redirect to login.
+      router.push("/login");
+    }
+  }, [isLoading, isAuthenticated, router]);
 
   const handleLogout = () => {
-    setSessions([]);
-    logout();
+    setSessions([]); // Clear local state first
+    logout(); // Call the centralized logout function from context
   };
 
   const handleRename = async (id: number, title: string) => {
     try {
       await apiClient.put(`/chat/${id}`, { title });
-      await refreshSessions();
+      await refreshSessions(); // Use the memoized refresh function
     } catch (e) {
       console.error("Failed to rename session", e);
     }
@@ -122,7 +145,7 @@ export default function ChatLayout({
   const handleDelete = async (id: number) => {
     try {
       await apiClient.delete(`/chat/${id}`);
-      await refreshSessions();
+      await refreshSessions(); // Use the memoized refresh function
       if (pathname === `/chat/${id}`) {
         router.push("/chat/new");
       }
@@ -130,37 +153,26 @@ export default function ChatLayout({
       console.error("Failed to delete session", e);
     }
   };
-
-  useEffect(() => {
-    if (!hasHydrated) return;
-    if (!isAuthenticated) {
-      router.push("/login");
-      return;
-    }
-
-    const fetchSessions = async () => {
-      try {
-        const response = await apiClient.get<ChatSession[]>("/chat/");
-        setSessions(response.data);
-      } catch (error) {
-        console.error("Failed to fetch sessions:", error);
-        if ((error as any).response?.status === 401) {
-          router.push("/login");
-        }
-      }
-    };
-
-    fetchSessions();
-  }, [router, pathname, isAuthenticated, hasHydrated]); // Re-fetch when pathname changes to update sidebar
-
-  if (!hasHydrated || !isAuthenticated || isLoading) {
+  
+  // --- This is the new, more robust loading and guarding logic ---
+  
+  // While the AuthContext is doing its initial check, show a loading screen.
+  // This is what fixes the "stuck" screen. `isLoading` is guaranteed to become `false`.
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center h-screen bg-gray-100">
-        <div>Loading...</div>
+        <div>Loading Application...</div>
       </div>
     );
   }
 
+  // If the check is done and the user is not authenticated, render nothing.
+  // The useEffect above will handle the redirect to the login page.
+  if (!isAuthenticated) {
+    return null;
+  }
+
+  // If we get here, the user is authenticated and we can render the app.
   return (
     <div className="flex h-screen bg-gray-100">
       <Sidebar
