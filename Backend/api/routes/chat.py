@@ -180,42 +180,39 @@ async def create_session_with_resume_analysis(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    print("--- [LOG] ENTERING /resume-analysis ENDPOINT ---")
+    print("--- [LOG] ENTERED /resume-analysis ENDPOINT ---")
     try:
-        print(f"--- [LOG] Received file: {resume.filename}, Content-Type: {resume.content_type} ---")
-
-        # 1. Create the new chat session OBJECT
+        # 1. Create the chat session OBJECT first.
         new_chat_session = models.ChatSession(title=f"Resume Analysis: {resume.filename}", user_id=current_user.id)
         db.add(new_chat_session)
         db.commit()
         db.refresh(new_chat_session)
-        print(f"--- [LOG] Created new chat session with ID: {new_chat_session.id} ---")
+        print(f"--- [LOG] Created session ID: {new_chat_session.id} ---")
 
-        print("--- [LOG] Awaiting resume.read() ---")
+        # 2. Read the file into memory.
         file_bytes = await resume.read()
-        print(f"--- [LOG] Successfully read {len(file_bytes)} bytes from file. ---")
+        print(f"--- [LOG] Read {len(file_bytes)} bytes from resume. ---")
 
-        print("--- [LOG] Calling chat_service.process_resume_file in threadpool ---")
+        # 3. Call the blocking service function in a threadpool.
         await run_in_threadpool(
             chat_service.process_resume_file, 
             db_session=db,
             chat_session=new_chat_session,
-            file_stream=resume.file
+            file_bytes=file_bytes
         )
-        print("--- [LOG] chat_service.process_resume_file finished. ---")
+        print("--- [LOG] process_resume_file completed successfully. ---")
         
         db.refresh(new_chat_session)
-        print("--- [LOG] Final refresh complete. Returning response. ---")
+        print("--- [LOG] Returning successful response. ---")
         return new_chat_session
     except Exception as e:
-        print(f"--- [FATAL ERROR in /resume-analysis] An exception occurred: {e} ---")
-        # Also log the full traceback
+        print(f"--- [FATAL CRASH in /resume-analysis] ERROR: {e} ---")
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail="An internal error occurred during file processing.")
+        raise HTTPException(status_code=500, detail="Server crashed while processing resume.")
 
 
-# Do the same for the other resume endpoint
+# This endpoint adds a resume analysis to an EXISTING session
 @router.post("/{session_id}/resume-analysis", response_model=schemas.Message)
 async def add_resume_analysis_to_session(
     session_id: int,
@@ -223,38 +220,35 @@ async def add_resume_analysis_to_session(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    print(f"--- [LOG] ENTERING /{session_id}/resume-analysis ENDPOINT ---")
+    print(f"--- [LOG] ENTERED /{session_id}/resume-analysis ENDPOINT ---")
     try:
-        chat_session_obj = db.query(models.ChatSession).filter(models.ChatSession.id == session_id).first()
-        if not chat_session_obj or chat_session_obj.user_id != current_user.id:
+        chat_session_obj = db.query(models.ChatSession).filter(models.ChatSession.id == session_id, models.ChatSession.user_id == current_user.id).first()
+        if not chat_session_obj:
             raise HTTPException(status_code=404, detail="Chat session not found or not authorized")
-        print(f"--- [LOG] Found existing session ID: {session_id} ---")
-
-        print("--- [LOG] Awaiting resume.read() ---")
+        
         file_bytes = await resume.read()
-        print(f"--- [LOG] Successfully read {len(file_bytes)} bytes from file. ---")
+        print(f"--- [LOG] Read {len(file_bytes)} bytes from resume for session {session_id}. ---")
 
-        print("--- [LOG] Calling chat_service.process_resume_file in threadpool ---")
         await run_in_threadpool(
             chat_service.process_resume_file, 
             db_session=db,
             chat_session=chat_session_obj,
-            file_stream=resume.file    )
-        print("--- [LOG] chat_service.process_resume_file finished. ---")
-        
+            file_bytes=file_bytes
+        )
+        print(f"--- [LOG] process_resume_file for session {session_id} completed. ---")
+
         latest_ai_message = db.query(models.ChatMessage).filter(
             models.ChatMessage.session_id == session_id,
             models.ChatMessage.role == 'ai'
         ).order_by(models.ChatMessage.timestamp.desc()).first()
         
-        print("--- [LOG] Returning latest AI message. ---")
         return latest_ai_message
     except Exception as e:
-        print(f"--- [FATAL ERROR in /{session_id}/resume-analysis] An exception occurred: {e} ---")
+        print(f"--- [FATAL CRASH in /{session_id}/resume-analysis] ERROR: {e} ---")
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail="An internal error occurred during file processing.")
-
+        raise HTTPException(status_code=500, detail="Server crashed while processing resume.")
+    
 @router.post("/{session_id}/messages/stream")
 def post_new_message_stream(
     session_id: int,
