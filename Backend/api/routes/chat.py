@@ -172,7 +172,7 @@ def post_new_message(
 
 
 @router.post("/resume-analysis", response_model=schemas.ChatSession, status_code=status.HTTP_201_CREATED)
-def create_session_with_resume_analysis(
+async def create_session_with_resume_analysis( # <-- ADD async
     resume: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
@@ -183,16 +183,20 @@ def create_session_with_resume_analysis(
     db.commit()
     db.refresh(db_session)
 
-    # 2. Process the file
-    file_bytes = resume.file.read()
+    # 2. Process the file asynchronously
+    file_bytes = await resume.read() # <-- ADD await and use .read()
+    
+    # Your service function is synchronous, which is fine to call from an async endpoint.
+    # FastAPI is smart enough to run it in a thread pool.
     chat_service.process_resume_file(db, db_session, file_bytes)
+    
     db.refresh(db_session) # Refresh again to load the new messages
 
     return db_session
 
 # This endpoint adds a resume analysis to an EXISTING session
 @router.post("/{session_id}/resume-analysis", response_model=schemas.Message)
-def add_resume_analysis_to_session(
+async def add_resume_analysis_to_session(
     session_id: int,
     resume: UploadFile = File(...),
     db: Session = Depends(get_db),
@@ -202,7 +206,7 @@ def add_resume_analysis_to_session(
     if not db_session or db_session.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Chat session not found or not authorized")
     
-    file_bytes = resume.file.read()
+    file_bytes = await resume.read()
     chat_service.process_resume_file(db, db_session, file_bytes)
 
     # Return the latest AI message (the analysis)
