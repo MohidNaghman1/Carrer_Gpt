@@ -2,7 +2,7 @@ from sqlalchemy.orm import Session
 from langchain_core.messages import HumanMessage, AIMessage
 from io import BytesIO
 import json
-
+from langgraph_core.utils.file_parser import extract_text_from_file 
 # Import the chain CREATION functions and agents, not the compiled app
 from langgraph_core.agents.chains import (
     create_career_advisor_chain,
@@ -13,7 +13,6 @@ from langgraph_core.agents.chains import (
 )
 from langgraph_core.graph_backend import supervisor_llm, llm_parser # We need the supervisor's LLM
 from db import models
-
 # Re-create the supervisor chain here for manual routing
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
@@ -101,39 +100,29 @@ def process_user_message(db_session: Session, chat_session: models.ChatSession, 
         full_response += token
     return full_response
 
-def process_resume_file(db_session: Session, chat_session: models.ChatSession, file_bytes: bytes) -> str:
+def process_resume_file(db_session: Session, chat_session: models.ChatSession, file_stream) -> str:
     """
-    Analyzes a resume file, saves the text and analysis to the DB.
+    Analyzes a resume file stream, saves the text and analysis to the DB.
     """
     print(f"--- Processing resume for session_id: {chat_session.id} ---")
-
-    # --- THIS IS THE NEW PART ---
-    # Create an instance of the resume analyzer agent/chain
     resume_analyzer_agent = create_resume_analyzer_chain()
-    # ---------------------------
 
-    file_like_object = BytesIO(file_bytes)
-    file_like_object.name = "resume.pdf"
-
-    resume_text = extract_text_from_file(file_like_object)
+    # Pass the stream directly to the parser
+    resume_text = extract_text_from_file(file_stream)
 
     if "Error:" in resume_text:
         return resume_text
 
-    # Now you can call invoke on the instance you just created
     analysis_string = resume_analyzer_agent.invoke({"resume_text": resume_text})
 
-    # Save the extracted text to the session for future Q&A
     chat_session.resume_text = resume_text
     
-    # Save the analysis as an AI message in the chat history
     db_human_message = models.ChatMessage(
-        session_id=chat_session.id, role="human", content=f"Please analyze my uploaded resume: {file_like_object.name}"
+        session_id=chat_session.id, role="human", content=f"Please analyze my uploaded resume: {file_stream.name}"
     )
     db_ai_message = models.ChatMessage(
         session_id=chat_session.id, role="ai", content=analysis_string
     )
-    # The session is already in the db_session from the endpoint, so we just need to add the messages
     db_session.add_all([db_human_message, db_ai_message])
     db_session.commit()
 

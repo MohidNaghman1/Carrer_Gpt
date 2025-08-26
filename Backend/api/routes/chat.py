@@ -3,6 +3,7 @@ import json
 from fastapi import APIRouter, HTTPException, status, Depends,UploadFile, File
 from fastapi.responses import StreamingResponse
 from typing import List
+from Backend import db
 from sqlalchemy.orm import Session
 from services import chat_service
 # Import models, schemas, and the db session dependency
@@ -183,13 +184,11 @@ async def create_session_with_resume_analysis( # <-- ADD async
     db.commit()
     db.refresh(db_session)
 
-    # 2. Process the file asynchronously
-    file_bytes = await resume.read() # <-- ADD await and use .read()
     
     # Your service function is synchronous, which is fine to call from an async endpoint.
     # FastAPI is smart enough to run it in a thread pool.
-    chat_service.process_resume_file(db, db_session, file_bytes)
-    
+    chat_service.process_resume_file(db, db_session, resume.file)
+
     db.refresh(db_session) # Refresh again to load the new messages
 
     return db_session
@@ -206,8 +205,7 @@ async def add_resume_analysis_to_session(
     if not db_session or db_session.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Chat session not found or not authorized")
     
-    file_bytes = await resume.read()
-    chat_service.process_resume_file(db, db_session, file_bytes)
+    chat_service.process_resume_file(db, db_session, resume.file)
 
     # Return the latest AI message (the analysis)
     latest_ai_message = db.query(models.ChatMessage).filter(
