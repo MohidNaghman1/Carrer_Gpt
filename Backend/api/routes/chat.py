@@ -180,26 +180,33 @@ async def create_session_with_resume_analysis(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    # ... (code to create new_chat_session is fine)
-    new_chat_session = models.ChatSession(...)
-    db.add(new_chat_session)
-    db.commit()
-    db.refresh(new_chat_session)
+    try:
+        # Create new chat session with proper keyword arguments
+        new_chat_session = models.ChatSession(
+            user_id=current_user.id,
+            title="Resume Analysis Chat",
+            created_at=datetime.utcnow()
+        )
+        
+        db.add(new_chat_session)
+        db.commit()
+        db.refresh(new_chat_session)
 
-    # REMOVE this line: file_bytes = await resume.read()
-    
-    # THIS IS THE FIX
-    await run_in_threadpool(
-        chat_service.process_resume_file, 
-        db_session=db,
-        chat_session=new_chat_session,
-        file_stream=resume.file # Pass the file stream object with the correct keyword
-    )
-    
-    db.refresh(new_chat_session)
-    return new_chat_session
+        # Process resume file
+        await run_in_threadpool(
+            chat_service.process_resume_file, 
+            db_session=db,
+            chat_session=new_chat_session,
+            file_stream=resume.file  # Pass the file stream object
+        )
+        
+        db.refresh(new_chat_session)
+        return new_chat_session
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error creating session: {str(e)}")
 
-# This endpoint adds a resume analysis to an EXISTING session
 @router.post("/{session_id}/resume-analysis", response_model=schemas.Message)
 async def add_resume_analysis_to_session(
     session_id: int,
@@ -207,26 +214,40 @@ async def add_resume_analysis_to_session(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    # Retrieve the chat session object and check ownership
-    chat_session_obj = db.query(models.ChatSession).filter(models.ChatSession.id == session_id).first()
-    if not chat_session_obj or chat_session_obj.user_id != current_user.id:
-        raise HTTPException(status_code=404, detail="Chat session not found or not authorized")
-    
-    # APPLY THE SAME FIX HERE
-    await run_in_threadpool(
-        chat_service.process_resume_file, 
-        db_session=db,
-        chat_session=chat_session_obj,
-        file_stream=resume.file # Pass the file stream object with the correct keyword
-    )
-    
-    latest_ai_message = db.query(models.ChatMessage).filter(
-        models.ChatMessage.session_id == session_id,
-        models.ChatMessage.role == 'ai'
-    ).order_by(models.ChatMessage.timestamp.desc()).first()
-    if not latest_ai_message:
-        raise HTTPException(status_code=500, detail="Could not retrieve AI response.")
-    return latest_ai_message
+    try:
+        # Retrieve the chat session object and check ownership
+        chat_session_obj = db.query(models.ChatSession).filter(
+            models.ChatSession.id == session_id
+        ).first()
+        
+        if not chat_session_obj or chat_session_obj.user_id != current_user.id:
+            raise HTTPException(status_code=404, detail="Chat session not found or not authorized")
+        
+        # Process resume file
+        await run_in_threadpool(
+            chat_service.process_resume_file, 
+            db_session=db,
+            chat_session=chat_session_obj,
+            file_stream=resume.file  # Pass the file stream object
+        )
+        
+        # Get the latest AI message
+        latest_ai_message = db.query(models.ChatMessage).filter(
+            models.ChatMessage.session_id == session_id,
+            models.ChatMessage.role == 'ai'
+        ).order_by(models.ChatMessage.timestamp.desc()).first()
+        
+        if not latest_ai_message:
+            raise HTTPException(status_code=500, detail="Could not retrieve AI response.")
+            
+        return latest_ai_message
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error processing resume: {str(e)}")
+
 
 @router.post("/{session_id}/messages/stream")
 def post_new_message_stream(
