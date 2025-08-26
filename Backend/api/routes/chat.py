@@ -3,7 +3,6 @@ import json
 from fastapi import APIRouter, HTTPException, status, Depends,UploadFile, File
 from fastapi.responses import StreamingResponse
 from typing import List
-from Backend import db
 from sqlalchemy.orm import Session
 from services import chat_service
 # Import models, schemas, and the db session dependency
