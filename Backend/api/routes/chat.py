@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, status, Depends,UploadFile, File
 from fastapi.responses import StreamingResponse
 from typing import List
 from sqlalchemy.orm import Session
+from fastapi.concurrency import run_in_threadpool
 from services import chat_service
 # Import models, schemas, and the db session dependency
 from db import models, schemas
@@ -172,25 +173,30 @@ def post_new_message(
 
 
 @router.post("/resume-analysis", response_model=schemas.ChatSession, status_code=status.HTTP_201_CREATED)
-async def create_session_with_resume_analysis( # <-- ADD async
+async def create_session_with_resume_analysis(
     resume: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    # 1. Create a new session with a smart title
-    db_session = models.ChatSession(title=f"Resume Analysis: {resume.filename}", user_id=current_user.id)
-    db.add(db_session)
+    # 1. Create the new chat session OBJECT. Use a clear variable name.
+    new_chat_session = models.ChatSession(title=f"Resume Analysis: {resume.filename}", user_id=current_user.id)
+    db.add(new_chat_session)
     db.commit()
-    db.refresh(db_session)
+    db.refresh(new_chat_session)
 
+    file_bytes = await resume.read()
     
-    # Your service function is synchronous, which is fine to call from an async endpoint.
-    # FastAPI is smart enough to run it in a thread pool.
-    chat_service.process_resume_file(db, db_session, resume.file)
+    # 2. Call the service function in a threadpool with UNAMBIGUOUS arguments.
+    await run_in_threadpool(
+        chat_service.process_resume_file, 
+        db_session=db,                 # Pass the database connection as 'db_session'
+        chat_session=new_chat_session, # Pass the chat object as 'chat_session'
+        file_bytes=file_bytes
+    )
+    
+    db.refresh(new_chat_session)
+    return new_chat_session
 
-    db.refresh(db_session) # Refresh again to load the new messages
-
-    return db_session
 
 # This endpoint adds a resume analysis to an EXISTING session
 @router.post("/{session_id}/resume-analysis", response_model=schemas.Message)
@@ -200,20 +206,27 @@ async def add_resume_analysis_to_session(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    db_session = db.query(models.ChatSession).filter(models.ChatSession.id == session_id).first()
-    if not db_session or db_session.user_id != current_user.id:
+    # 1. Get the existing chat session OBJECT.
+    chat_session_obj = db.query(models.ChatSession).filter(models.ChatSession.id == session_id).first()
+    if not chat_session_obj or chat_session_obj.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Chat session not found or not authorized")
     
-    chat_service.process_resume_file(db, db_session, resume.file)
+    file_bytes = await resume.read()
 
-    # Return the latest AI message (the analysis)
+    # 2. Call the service function with UNAMBIGUOUS arguments.
+    await run_in_threadpool(
+        chat_service.process_resume_file, 
+        db_session=db,                 # Pass the database connection as 'db_session'
+        chat_session=chat_session_obj, # Pass the chat object as 'chat_session'
+        file_bytes=file_bytes
+    )
+    
     latest_ai_message = db.query(models.ChatMessage).filter(
         models.ChatMessage.session_id == session_id,
         models.ChatMessage.role == 'ai'
     ).order_by(models.ChatMessage.timestamp.desc()).first()
 
     return latest_ai_message
-
 
 @router.post("/{session_id}/messages/stream")
 def post_new_message_stream(
