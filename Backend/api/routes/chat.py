@@ -200,7 +200,7 @@ async def create_session_with_resume_analysis(
             chat_service.process_resume_file, 
             db_session=db,
             chat_session=new_chat_session,
-            file_bytes=file_bytes
+            file_stream=resume.file
         )
         print("--- [LOG] chat_service.process_resume_file finished. ---")
         
@@ -239,8 +239,7 @@ async def add_resume_analysis_to_session(
             chat_service.process_resume_file, 
             db_session=db,
             chat_session=chat_session_obj,
-            file_bytes=file_bytes
-        )
+            file_stream=resume.file    )
         print("--- [LOG] chat_service.process_resume_file finished. ---")
         
         latest_ai_message = db.query(models.ChatMessage).filter(
