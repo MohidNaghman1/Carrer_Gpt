@@ -172,33 +172,50 @@ def post_new_message(
     return db_ai_message
 
 
+
+
 @router.post("/resume-analysis", response_model=schemas.ChatSession, status_code=status.HTTP_201_CREATED)
 async def create_session_with_resume_analysis(
     resume: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    # 1. Create the new chat session OBJECT. Use a clear variable name.
-    new_chat_session = models.ChatSession(title=f"Resume Analysis: {resume.filename}", user_id=current_user.id)
-    db.add(new_chat_session)
-    db.commit()
-    db.refresh(new_chat_session)
+    print("--- [LOG] ENTERING /resume-analysis ENDPOINT ---")
+    try:
+        print(f"--- [LOG] Received file: {resume.filename}, Content-Type: {resume.content_type} ---")
 
-    file_bytes = await resume.read()
-    
-    # 2. Call the service function in a threadpool with UNAMBIGUOUS arguments.
-    await run_in_threadpool(
-        chat_service.process_resume_file, 
-        db_session=db,                 # Pass the database connection as 'db_session'
-        chat_session=new_chat_session, # Pass the chat object as 'chat_session'
-        file_bytes=file_bytes
-    )
-    
-    db.refresh(new_chat_session)
-    return new_chat_session
+        # 1. Create the new chat session OBJECT
+        new_chat_session = models.ChatSession(title=f"Resume Analysis: {resume.filename}", user_id=current_user.id)
+        db.add(new_chat_session)
+        db.commit()
+        db.refresh(new_chat_session)
+        print(f"--- [LOG] Created new chat session with ID: {new_chat_session.id} ---")
+
+        print("--- [LOG] Awaiting resume.read() ---")
+        file_bytes = await resume.read()
+        print(f"--- [LOG] Successfully read {len(file_bytes)} bytes from file. ---")
+
+        print("--- [LOG] Calling chat_service.process_resume_file in threadpool ---")
+        await run_in_threadpool(
+            chat_service.process_resume_file, 
+            db_session=db,
+            chat_session=new_chat_session,
+            file_bytes=file_bytes
+        )
+        print("--- [LOG] chat_service.process_resume_file finished. ---")
+        
+        db.refresh(new_chat_session)
+        print("--- [LOG] Final refresh complete. Returning response. ---")
+        return new_chat_session
+    except Exception as e:
+        print(f"--- [FATAL ERROR in /resume-analysis] An exception occurred: {e} ---")
+        # Also log the full traceback
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail="An internal error occurred during file processing.")
 
 
-# This endpoint adds a resume analysis to an EXISTING session
+# Do the same for the other resume endpoint
 @router.post("/{session_id}/resume-analysis", response_model=schemas.Message)
 async def add_resume_analysis_to_session(
     session_id: int,
@@ -206,27 +223,38 @@ async def add_resume_analysis_to_session(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    # 1. Get the existing chat session OBJECT.
-    chat_session_obj = db.query(models.ChatSession).filter(models.ChatSession.id == session_id).first()
-    if not chat_session_obj or chat_session_obj.user_id != current_user.id:
-        raise HTTPException(status_code=404, detail="Chat session not found or not authorized")
-    
-    file_bytes = await resume.read()
+    print(f"--- [LOG] ENTERING /{session_id}/resume-analysis ENDPOINT ---")
+    try:
+        chat_session_obj = db.query(models.ChatSession).filter(models.ChatSession.id == session_id).first()
+        if not chat_session_obj or chat_session_obj.user_id != current_user.id:
+            raise HTTPException(status_code=404, detail="Chat session not found or not authorized")
+        print(f"--- [LOG] Found existing session ID: {session_id} ---")
 
-    # 2. Call the service function with UNAMBIGUOUS arguments.
-    await run_in_threadpool(
-        chat_service.process_resume_file, 
-        db_session=db,                 # Pass the database connection as 'db_session'
-        chat_session=chat_session_obj, # Pass the chat object as 'chat_session'
-        file_bytes=file_bytes
-    )
-    
-    latest_ai_message = db.query(models.ChatMessage).filter(
-        models.ChatMessage.session_id == session_id,
-        models.ChatMessage.role == 'ai'
-    ).order_by(models.ChatMessage.timestamp.desc()).first()
+        print("--- [LOG] Awaiting resume.read() ---")
+        file_bytes = await resume.read()
+        print(f"--- [LOG] Successfully read {len(file_bytes)} bytes from file. ---")
 
-    return latest_ai_message
+        print("--- [LOG] Calling chat_service.process_resume_file in threadpool ---")
+        await run_in_threadpool(
+            chat_service.process_resume_file, 
+            db_session=db,
+            chat_session=chat_session_obj,
+            file_bytes=file_bytes
+        )
+        print("--- [LOG] chat_service.process_resume_file finished. ---")
+        
+        latest_ai_message = db.query(models.ChatMessage).filter(
+            models.ChatMessage.session_id == session_id,
+            models.ChatMessage.role == 'ai'
+        ).order_by(models.ChatMessage.timestamp.desc()).first()
+        
+        print("--- [LOG] Returning latest AI message. ---")
+        return latest_ai_message
+    except Exception as e:
+        print(f"--- [FATAL ERROR in /{session_id}/resume-analysis] An exception occurred: {e} ---")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail="An internal error occurred during file processing.")
 
 @router.post("/{session_id}/messages/stream")
 def post_new_message_stream(
