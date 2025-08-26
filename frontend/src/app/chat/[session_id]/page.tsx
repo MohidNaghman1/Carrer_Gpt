@@ -561,10 +561,11 @@ const handleFileUpload = async (file: File) => {
             });
             const newSession: ChatSession = response.data;
             
-            // The ONLY action we take is to navigate.
-            // The useEffect hook will see the URL change and will be responsible
+
             // for fetching the data for this new session. This prevents race conditions.
-            router.push(`/chat/${newSession.id}`);
+            router.replace(`/chat/${newSession.id}`);
+            setSession(newSession);
+            setMessages(newSession.messages || []);
             // We don't set state here.
             return; // Exit the function early.
         }
