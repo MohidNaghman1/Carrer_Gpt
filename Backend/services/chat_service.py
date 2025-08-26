@@ -2,6 +2,8 @@ from sqlalchemy.orm import Session
 from langchain_core.messages import HumanMessage, AIMessage
 from io import BytesIO
 import json
+from db.database import SessionLocal 
+
 from langgraph_core.utils.file_parser import extract_text_from_file 
 # Import the chain CREATION functions and agents, not the compiled app
 from langgraph_core.agents.chains import (
