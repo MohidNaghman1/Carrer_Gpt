@@ -537,16 +537,16 @@ export default function EnhancedChatSessionPage() {
     };
   }, [streamReader]);
 
-  const handleFileUpload = async (file: File) => {
-    setIsLoading(true);
-    setError(null);
-    
+const handleFileUpload = async (file: File) => {
+  setIsLoading(true);
+  setError(null);
+
     const optimisticMsg: ChatMessage = {
-      id: Date.now(),
-      role: "human" as const,
-      content: `📄 Analyzing uploaded resume: ${file.name}...`,
-      session_id: 0,
-      timestamp: new Date().toISOString()
+        id: Date.now(),
+        role: "human" as const,
+        content: `📄 Analyzing uploaded resume: ${file.name}...`,
+        session_id: 0,
+        timestamp: new Date().toISOString()
     };
     setMessages(prev => [...prev, optimisticMsg]);
 
@@ -554,47 +554,50 @@ export default function EnhancedChatSessionPage() {
     formData.append("resume", file);
 
     try {
-      if (isNewChat) {
-        // Create new session with resume analysis
-        const response = await apiClient.post("/chat/resume-analysis", formData, {
-          headers: { "Content-Type": "multipart/form-data" },
-        });
-        const sessionData: ChatSession = response.data;
+        // --- Case 1: Uploading a resume to start a NEW chat ---
+        if (isNewChat) {
+            const response = await apiClient.post("/chat/resume-analysis", formData, {
+                headers: { "Content-Type": "multipart/form-data" },
+            });
+            const newSession: ChatSession = response.data;
+            
+            // The ONLY action we take is to navigate.
+            // The useEffect hook will see the URL change and will be responsible
+            // for fetching the data for this new session. This prevents race conditions.
+            router.push(`/chat/${newSession.id}`);
+            // We don't set state here.
+            return; // Exit the function early.
+        }
         
-        router.replace(`/chat/${sessionData.id}`);
-        setSession(sessionData);
-        setMessages(sessionData.messages || []);
-      } else {
-        // Add resume analysis to existing session
+        // --- Case 2: Uploading a resume to an EXISTING chat ---
+        // Since session_id is guaranteed to exist here, we can use it.
         await apiClient.post(`/chat/${session_id}/resume-analysis`, formData, {
-          headers: { "Content-Type": "multipart/form-data" },
+            headers: { "Content-Type": "multipart/form-data" },
         });
 
-        // Refresh session data to get updated messages
+        // After a successful upload, refetch the session to show the new analysis message.
         const updatedResponse = await apiClient.get(`/chat/${session_id}`);
         setSession(updatedResponse.data);
         setMessages(updatedResponse.data.messages || []);
-      }
+
     } catch (error: any) {
-      console.error("Failed to upload resume:", error);
-      setError(error?.response?.data?.detail || "Failed to analyze resume. Please try again.");
-      
-      // Remove optimistic message on error
-      setMessages(prev => prev.filter(m => m.id !== optimisticMsg.id));
-      
-      // Add error message
-      const errorMessage: ChatMessage = {
-        id: Date.now() + 1,
-        role: "ai" as const,
-        content: "Sorry, I encountered an error processing your resume. Please try again with a different PDF file.",
-        session_id: 0,
-        timestamp: new Date().toISOString(),
-      };
-      setMessages(prev => [...prev, errorMessage]);
+        console.error("Failed to upload resume:", error);
+        setError(error?.response?.data?.detail || "Failed to analyze resume. Please try again.");
+        
+        // On error, remove the optimistic message and add an error bubble.
+        setMessages(prev => prev.filter(m => m.id !== optimisticMsg.id));
+        const errorMessage: ChatMessage = {
+            id: Date.now() + 1,
+            role: "ai" as const,
+            content: "Sorry, I encountered an error processing your resume. Please try again with a different PDF file.",
+            session_id: 0,
+            timestamp: new Date().toISOString(),
+        };
+        setMessages(prev => [...prev, errorMessage]);
     } finally {
-      setIsLoading(false);
+        setIsLoading(false);
     }
-  };
+};
   
   const handleSendMessage = async (userMessageContent: string) => {
     setIsLoading(true);
