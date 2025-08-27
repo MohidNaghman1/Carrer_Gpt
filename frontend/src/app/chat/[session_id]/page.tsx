@@ -328,9 +328,7 @@ const EnhancedWelcomeScreen = ({
     "List the top 10 most commonly asked interview questions",
     "Generate a step-by-step roadmap to become a Data Scientist in 2025",
     "What are the latest AI job opportunities in Pakistan?",
-    "Help me write a compelling cover letter",
     "What skills should I learn for software engineering?",
-    "How can I negotiate a better salary?",
   ];
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -392,7 +390,7 @@ const EnhancedWelcomeScreen = ({
   );
 };
 
-// --- Performance-Optimized Streaming Component ---
+// --- OPTIMIZED STREAMING COMPONENT (THIS IS THE KEY FIX) ---
 const StreamingBubble = ({ 
   reader, 
   onStreamEnd 
@@ -404,7 +402,7 @@ const StreamingBubble = ({
   const isStreaming = useRef(true);
 
   useEffect(() => {
-    const stream = async () => {
+    const processStream = async () => {
       const decoder = new TextDecoder();
       let fullResponse = "";
       let buffer = "";
@@ -452,17 +450,20 @@ const StreamingBubble = ({
         } catch (error: any) {
           console.error("Stream error:", error);
           isStreaming.current = false;
+          // Don't treat AbortError as a real error - it's expected during cleanup
           if (error.name !== 'AbortError') {
             onStreamEnd(fullResponse + "\n\n[Error: Stream interrupted]");
+          } else {
+            onStreamEnd(fullResponse); // Just end normally on abort
           }
           break;
         }
       }
     };
 
-    stream();
+    processStream();
 
-    // Cleanup function
+    // Cleanup function - DON'T abort the reader here, just stop processing
     return () => {
       isStreaming.current = false;
     };
@@ -531,11 +532,9 @@ export default function EnhancedChatSessionPage() {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
-      if (streamReader) {
-        streamReader.cancel();
-      }
+      // Don't cancel the reader here - let the StreamingBubble handle its own cleanup
     };
-  }, [streamReader]);
+  }, []);
 
 const handleFileUpload = async (file: File) => {
   setIsLoading(true);
@@ -561,17 +560,13 @@ const handleFileUpload = async (file: File) => {
             });
             const newSession: ChatSession = response.data;
             
-
-            // for fetching the data for this new session. This prevents race conditions.
             router.replace(`/chat/${newSession.id}`);
             setSession(newSession);
             setMessages(newSession.messages || []);
-            // We don't set state here.
             return; // Exit the function early.
         }
         
         // --- Case 2: Uploading a resume to an EXISTING chat ---
-        // Since session_id is guaranteed to exist here, we can use it.
         await apiClient.post(`/chat/${session_id}/resume-analysis`, formData, {
             headers: { "Content-Type": "multipart/form-data" },
         });
@@ -600,6 +595,7 @@ const handleFileUpload = async (file: File) => {
     }
 };
   
+  // OPTIMIZED MESSAGE HANDLING (THIS IS THE KEY FIX)
   const handleSendMessage = async (userMessageContent: string) => {
     setIsLoading(true);
     setError(null);
@@ -620,8 +616,8 @@ const handleFileUpload = async (file: File) => {
     setMessages(prev => [...prev, optimisticUserMessage]);
 
     try {
+      // Case 1: First message in a new chat - use standard request (no streaming)
       if (isNewChat) {
-        // Create new session with first message
         const response = await apiClient.post("/chat/", {
           first_message: userMessageContent,
         });
@@ -633,7 +629,7 @@ const handleFileUpload = async (file: File) => {
         return;
       }
 
-      // Stream response for existing session
+      // Case 2: Message in existing chat - use streaming
       abortControllerRef.current = new AbortController();
       const token = localStorage.getItem("accessToken");
       const url = `${apiClient.defaults.baseURL}/chat/${session_id}/messages/stream`;
