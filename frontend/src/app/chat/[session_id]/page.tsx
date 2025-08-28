@@ -157,7 +157,7 @@ const MessageInput = ({
                 disabled={isLoading}
                 title="Upload Resume (PDF)"
               >
-                Upload PDF
+                Upload Resume
               </button>
               <button
                 type="submit"
@@ -256,7 +256,7 @@ const WelcomeScreen = ({
             disabled={isLoading}
             className="inline-flex items-center justify-center px-4 py-2 rounded-md border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 text-xs sm:text-sm"
           >
-            Upload Resume (PDF)
+            Upload Resume
           </button>
           <input
             ref={fileInputRef}
@@ -523,14 +523,12 @@ export default function ChatSessionPage() {
           {session?.title || "Chat"}
         </h1>
         <div className="flex items-center gap-2">
-          <a
-            href="https://carrer-gpt.vercel.app/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="px-3 py-2 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 transition-all text-xs sm:text-sm font-medium"
-          >
-            Go Back to Dashboard
-          </a>
+        <a
+          href="https://carrer-gpt.vercel.app/"
+          className="px-3 py-2 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 transition-all text-xs sm:text-sm font-medium"
+        >
+          Go Back to Dashboard
+        </a>
           {/* Add your New Chat and Logout buttons here if not already present */}
         </div>
       </div>
