@@ -44,13 +44,13 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50">
-      <div className="w-full max-w-md p-8 space-y-8 bg-white/90 rounded-2xl shadow-xl border border-gray-100 backdrop-blur-sm">
+    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-blue-900">
+      <div className="w-full max-w-md p-8 space-y-8 bg-slate-900/95 rounded-2xl shadow-2xl border border-blue-900/60">
         <div className="text-center">
-          <h1 className="text-4xl font-extrabold tracking-tight text-gray-900">
+          <h1 className="text-4xl font-extrabold tracking-tight text-white drop-shadow">
             Welcome Back
           </h1>
-          <p className="mt-2 text-gray-600">
+          <p className="mt-2 text-blue-100">
             Sign in to access your CareerGPT dashboard.
           </p>
         </div>
@@ -66,7 +66,7 @@ export default function LoginPage() {
                 type="email"
                 autoComplete="email"
                 required
-                className="relative block w-full px-4 py-3 text-gray-900 placeholder-gray-400 border border-gray-300 rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-500 focus:z-10 sm:text-base transition-all shadow-sm"
+                className="relative block w-full px-4 py-3 text-white placeholder-blue-200 bg-slate-800 border border-blue-900 rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-500 focus:z-10 sm:text-base transition-all shadow-sm"
                 placeholder="Email address"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -82,7 +82,7 @@ export default function LoginPage() {
                 type="password"
                 autoComplete="current-password"
                 required
-                className="relative block w-full px-4 py-3 text-gray-900 placeholder-gray-400 border border-gray-300 rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-500 focus:z-10 sm:text-base transition-all shadow-sm"
+                className="relative block w-full px-4 py-3 text-white placeholder-blue-200 bg-slate-800 border border-blue-900 rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-500 focus:z-10 sm:text-base transition-all shadow-sm"
                 placeholder="Password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -100,17 +100,17 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="relative flex justify-center w-full px-4 py-3 text-base font-semibold text-white bg-indigo-600 border border-transparent rounded-lg group hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-400 disabled:bg-indigo-300 disabled:cursor-not-allowed shadow-md transition-all"
+              className="relative flex justify-center w-full px-4 py-3 text-base font-semibold text-white bg-blue-700 border border-blue-800 rounded-lg group hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-400 disabled:bg-blue-300 disabled:cursor-not-allowed shadow-lg transition-all"
             >
               {loading ? "Signing in..." : "Sign in"}
             </button>
           </div>
         </form>
-        <p className="mt-4 text-sm text-center text-gray-600">
+        <p className="mt-4 text-sm text-center text-blue-100">
           Don&apos;t have an account?{" "}
           <Link
             href="/register"
-            className="font-semibold text-indigo-600 hover:text-indigo-500 transition-colors"
+            className="font-semibold text-blue-400 hover:text-white transition-colors"
           >
             Sign up
           </Link>
