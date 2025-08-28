@@ -39,63 +39,55 @@ export default function Home() {
           <div className="absolute inset-0 bg-gradient-to-br from-blue-900 via-slate-900 to-slate-800 animate-gradient-x"></div>
           <div className="pointer-events-none absolute -top-24 -right-24 w-96 h-96 rounded-full bg-blue-700/30 blur-3xl"></div>
           <div className="pointer-events-none absolute -bottom-24 -left-24 w-[28rem] h-[28rem] rounded-full bg-slate-700/30 blur-3xl"></div>
-          <div className="relative max-w-7xl mx-auto px-8 py-28 sm:py-32">
-            <div className="max-w-3xl bg-white/10 backdrop-blur-xl rounded-3xl shadow-2xl p-10 border border-blue-900/30 mx-auto">
-              <h1 className="text-5xl sm:text-6xl font-extrabold text-white leading-tight drop-shadow-lg">
-                Plan your career, land interviews, and grow faster with AI
-              </h1>
-              <p className="mt-6 text-lg sm:text-xl text-blue-100 font-medium">
-                Upload your resume, get instant feedback, and chat your way to a
-                better job. Personalized guidance, role-specific prep, and
-                actionable next steps.
-              </p>
-              <div className="mt-10 flex flex-col sm:flex-row gap-4">
-                <Link
-                  href="/chat/new"
-                  className="inline-flex items-center justify-center px-7 py-3 rounded-2xl text-white bg-blue-700 hover:bg-blue-800 border border-blue-800 shadow-xl transition-all duration-150 active:scale-95 focus:ring-2 focus:ring-blue-400 text-lg font-semibold"
-                >
-                  <span className="mr-2">💬</span> Start chatting
-                </Link>
-                <a
-                  href="#features"
-                  className="inline-flex items-center justify-center px-7 py-3 rounded-2xl bg-white text-blue-800 hover:bg-blue-50 active:bg-blue-100 focus:ring-2 focus:ring-blue-300 shadow-xl transition-all duration-150 text-lg font-semibold"
-                >
-                  <span className="mr-2">✨</span> See features
-                </a>
-              </div>
+          <div className="relative max-w-4xl mx-auto px-6 py-24 sm:py-32 flex flex-col items-center">
+            <h1 className="text-4xl sm:text-5xl font-extrabold text-white leading-tight text-center">
+              Plan your career, land interviews, and grow faster with AI
+            </h1>
+            <p className="mt-6 text-lg sm:text-xl text-blue-100 font-medium text-center max-w-2xl">
+              Upload your resume, get instant feedback, and chat your way to a
+              better job. Personalized guidance, role-specific prep, and
+              actionable next steps.
+            </p>
+            <div className="mt-10 flex flex-col sm:flex-row gap-4">
+              <Link
+                href="/chat/new"
+                className="inline-flex items-center justify-center px-7 py-3 rounded-lg text-white bg-blue-700 hover:bg-blue-800 border border-blue-800 shadow-lg transition-all duration-150 active:scale-95 focus:ring-2 focus:ring-blue-400 text-lg font-semibold"
+              >
+                Start chatting
+              </Link>
+              <a
+                href="#features"
+                className="inline-flex items-center justify-center px-7 py-3 rounded-lg bg-white text-blue-800 hover:bg-blue-50 active:bg-blue-100 focus:ring-2 focus:ring-blue-300 shadow-lg transition-all duration-150 text-lg font-semibold"
+              >
+                See features
+              </a>
             </div>
             {/* How it works */}
-            <div className="mt-20">
-              <h3 className="text-white/90 text-2xl font-bold tracking-tight mb-2">
+            <div className="mt-24 w-full">
+              <h3 className="text-white/90 text-xl font-bold tracking-tight mb-2 text-center">
                 How it works
               </h3>
-              <div className="h-1 w-16 bg-blue-700 rounded-full mb-8"></div>
+              <div className="h-1 w-16 bg-blue-700 rounded-full mx-auto mb-8"></div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
                 {[
                   {
                     title: "1. Create a chat",
                     desc: "Start a new session and describe your goal or upload a resume.",
-                    icon: "💡",
                   },
                   {
                     title: "2. Get tailored guidance",
                     desc: "Receive concise answers with actionable steps and resources.",
-                    icon: "🧭",
                   },
                   {
                     title: "3. Iterate and improve",
                     desc: "Refine your plan, prep for interviews, and track progress.",
-                    icon: "🚀",
                   },
                 ].map((step, i) => (
                   <div
                     key={step.title}
-                    className="rounded-2xl bg-slate-900/80 border border-blue-800 p-7 text-white/90 shadow-lg hover:scale-[1.04] hover:shadow-2xl transition-transform duration-200 cursor-pointer group flex flex-col items-center"
+                    className="rounded-lg bg-slate-900/80 border border-blue-800 p-6 text-white/90 shadow hover:scale-[1.03] hover:shadow-xl transition-transform duration-200 group flex flex-col items-center"
                   >
-                    <div className="text-3xl mb-3 group-hover:scale-125 transition-transform">
-                      {step.icon}
-                    </div>
-                    <div className="text-lg font-bold group-hover:text-blue-300 transition-colors mb-1">
+                    <div className="text-lg font-bold group-hover:text-blue-300 transition-colors mb-1 text-center">
                       {step.title}
                     </div>
                     <p className="mt-1 text-base text-blue-100 group-hover:text-white/90 transition-colors text-center">
