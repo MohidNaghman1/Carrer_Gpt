@@ -517,10 +517,22 @@ export default function ChatSessionPage() {
     // Make this the main flex container for the chat view
     <div className="h-full flex flex-col bg-slate-100">
       {/* Header: This has a fixed height */}
-      <div className="bg-white border-b border-slate-200 px-6 py-4 shadow-sm flex-shrink-0">
+
+      <div className="bg-white border-b border-slate-200 px-6 py-4 shadow-sm flex-shrink-0 flex items-center justify-between">
         <h1 className="text-lg font-semibold text-slate-800 truncate">
           {session?.title || "Chat"}
         </h1>
+        <div className="flex items-center gap-2">
+          <a
+            href="https://carrer-gpt.vercel.app/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-3 py-2 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 transition-all text-xs sm:text-sm font-medium"
+          >
+            Go Back to Dashboard
+          </a>
+          {/* Add your New Chat and Logout buttons here if not already present */}
+        </div>
       </div>
 
       {/* Messages area: This is the key change. */}
