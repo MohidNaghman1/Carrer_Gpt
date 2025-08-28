@@ -84,7 +84,7 @@ def supervisor_node(state: AgentState) -> dict:
      "**ROUTING DECISION TREE (Follow this exact sequence):**\n\n"
         
      "1️⃣ **RESUME UPLOAD CHECK:**\n"
-     "   ➤ Does the request mention uploading/analyzing a NEW resume/CV/PDF for the FIRST time?\n"
+     "   ➤ Does the request mention uploading/analyzing a NEW resume/CV/PDF ?\n"
      "   ➤ Keywords: 'analyze my resume', 'review my CV', 'upload resume', 'resume feedback', '.pdf'\n"
      "   ➤ If YES → Output: **ResumeAnalyst**\n"
      "   ➤ If NO → Continue to step 2\n\n"
