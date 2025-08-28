@@ -1,41 +1,41 @@
 // frontend/src/app/login/page.tsx
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import Link from 'next/link';
-import apiClient from '@/services/api'; // Using clean path alias
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import apiClient from "@/services/api"; // Using clean path alias
+import { useAuth } from "@/context/AuthContext";
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const auth = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setError("");
     setLoading(true);
 
     try {
       const formData = new URLSearchParams();
-      formData.append('username', email);
-      formData.append('password', password);
+      formData.append("username", email);
+      formData.append("password", password);
 
-      const response = await apiClient.post('/auth/token', formData, {
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      const response = await apiClient.post("/auth/token", formData, {
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
       });
 
       const { access_token } = response.data;
-      localStorage.setItem('accessToken', access_token);
-      router.push('/chat');
-
+      auth.login(access_token);
     } catch (err: any) {
       if (err.response && err.response.status === 401) {
-        setError('Incorrect email or password. Please try again.');
+        setError("Incorrect email or password. Please try again.");
       } else {
-        setError('An unexpected error occurred. Please try again later.');
+        setError("An unexpected error occurred. Please try again later.");
         console.error("Login failed:", err);
       }
     } finally {
@@ -57,26 +57,61 @@ export default function LoginPage() {
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           <div className="space-y-4 rounded-md">
             <div>
-              <label htmlFor="email-address" className="sr-only">Email address</label>
-              <input id="email-address" name="email" type="email" autoComplete="email" required className="relative block w-full px-4 py-3 text-gray-900 placeholder-gray-400 border border-gray-300 rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-500 focus:z-10 sm:text-base transition-all shadow-sm" placeholder="Email address" value={email} onChange={(e) => setEmail(e.target.value)} />
+              <label htmlFor="email-address" className="sr-only">
+                Email address
+              </label>
+              <input
+                id="email-address"
+                name="email"
+                type="email"
+                autoComplete="email"
+                required
+                className="relative block w-full px-4 py-3 text-gray-900 placeholder-gray-400 border border-gray-300 rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-500 focus:z-10 sm:text-base transition-all shadow-sm"
+                placeholder="Email address"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
             </div>
             <div>
-              <label htmlFor="password" className="sr-only">Password</label>
-              <input id="password" name="password" type="password" autoComplete="current-password" required className="relative block w-full px-4 py-3 text-gray-900 placeholder-gray-400 border border-gray-300 rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-500 focus:z-10 sm:text-base transition-all shadow-sm" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} />
+              <label htmlFor="password" className="sr-only">
+                Password
+              </label>
+              <input
+                id="password"
+                name="password"
+                type="password"
+                autoComplete="current-password"
+                required
+                className="relative block w-full px-4 py-3 text-gray-900 placeholder-gray-400 border border-gray-300 rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-500 focus:z-10 sm:text-base transition-all shadow-sm"
+                placeholder="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
             </div>
           </div>
 
-          {error && (<p className="text-sm text-center text-red-600 font-medium">{error}</p>)}
+          {error && (
+            <p className="text-sm text-center text-red-600 font-medium">
+              {error}
+            </p>
+          )}
 
           <div>
-            <button type="submit" disabled={loading} className="relative flex justify-center w-full px-4 py-3 text-base font-semibold text-white bg-indigo-600 border border-transparent rounded-lg group hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-400 disabled:bg-indigo-300 disabled:cursor-not-allowed shadow-md transition-all">
+            <button
+              type="submit"
+              disabled={loading}
+              className="relative flex justify-center w-full px-4 py-3 text-base font-semibold text-white bg-indigo-600 border border-transparent rounded-lg group hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-400 disabled:bg-indigo-300 disabled:cursor-not-allowed shadow-md transition-all"
+            >
               {loading ? "Signing in..." : "Sign in"}
             </button>
           </div>
         </form>
         <p className="mt-4 text-sm text-center text-gray-600">
           Don&apos;t have an account?{" "}
-          <Link href="/register" className="font-semibold text-indigo-600 hover:text-indigo-500 transition-colors">
+          <Link
+            href="/register"
+            className="font-semibold text-indigo-600 hover:text-indigo-500 transition-colors"
+          >
             Sign up
           </Link>
         </p>
