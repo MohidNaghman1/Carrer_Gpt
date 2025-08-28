@@ -7,8 +7,6 @@ import { useParams, useRouter } from "next/navigation";
 import apiClient from "../../../services/api";
 import { ChatMessage, ChatSession } from "../../../types";
 
-// --- UI Sub-components ---
-
 const MessageBubble = React.memo(
   ({
     message,
@@ -31,8 +29,8 @@ const MessageBubble = React.memo(
             <div
               className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
                 isAi
-                  ? "bg-gradient-to-r from-emerald-500 to-teal-600 text-white"
-                  : "bg-slate-600 text-white"
+                  ? "bg-gradient-to-r from-blue-700 to-blue-900 text-white"
+                  : "bg-slate-700 text-white"
               }`}
             >
               {isAi ? "🤖" : "👤"}
@@ -41,37 +39,37 @@ const MessageBubble = React.memo(
           <div
             className={`relative px-4 py-3 rounded-2xl shadow-sm ${
               isAi
-                ? "bg-slate-50 text-slate-800 border border-slate-200"
-                : "bg-gradient-to-r from-emerald-600 to-teal-600 text-white"
+                ? "bg-slate-800 text-white border border-blue-900"
+                : "bg-gradient-to-r from-blue-700 to-blue-900 text-white"
             }`}
           >
             <div
               className={`absolute top-3 w-3 h-3 transform rotate-45 ${
                 isAi
-                  ? "bg-slate-50 border-l border-t border-slate-200 -left-1.5"
-                  : "bg-emerald-600 -right-1.5"
+                  ? "bg-slate-800 border-l border-t border-blue-900 -left-1.5"
+                  : "bg-blue-700 -right-1.5"
               }`}
             ></div>
             <div className="relative z-10">
               {isTyping ? (
                 <div className="flex items-center space-x-1">
                   <div className="flex space-x-1">
-                    <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"></div>
+                    <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce"></div>
                     <div
-                      className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"
+                      className="w-2 h-2 bg-blue-400 rounded-full animate-bounce"
                       style={{ animationDelay: "0.1s" }}
                     ></div>
                     <div
-                      className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"
+                      className="w-2 h-2 bg-blue-400 rounded-full animate-bounce"
                       style={{ animationDelay: "0.2s" }}
                     ></div>
                   </div>
-                  <span className="text-slate-500 text-sm ml-2">
+                  <span className="text-blue-200 text-sm ml-2">
                     Thinking...
                   </span>
                 </div>
               ) : (
-                <div className="prose prose-sm max-w-none prose-slate">
+                <div className="prose prose-sm max-w-none prose-invert">
                   {streaming ? (
                     message.content // plain text while streaming
                   ) : (
@@ -136,7 +134,7 @@ const MessageInput = ({
   };
 
   return (
-    <div className="bg-slate-50 border-t border-slate-200 p-4">
+    <div className="bg-slate-900 border-t border-blue-900 p-4">
       <div className="max-w-4xl mx-auto">
         <form onSubmit={handleSubmit} className="relative">
           <div className="flex items-end space-x-3">
@@ -145,7 +143,7 @@ const MessageInput = ({
               onChange={(e) => setUserInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Ask me anything about your career..."
-              className="w-full resize-none rounded-xl border border-slate-300 bg-white px-4 py-3 text-black placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all max-h-32 overflow-y-auto"
+              className="w-full resize-none rounded-xl border border-blue-900 bg-slate-800 px-4 py-3 text-white placeholder-blue-200 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-500 transition-all max-h-32 overflow-y-auto"
               disabled={isLoading}
               rows={1}
             />
@@ -153,7 +151,7 @@ const MessageInput = ({
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="h-10 px-3 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-all disabled:opacity-50 text-xs sm:text-sm"
+                className="h-10 px-3 rounded-lg border border-blue-700 bg-blue-800 text-white hover:bg-blue-700 transition-all disabled:opacity-50 text-xs sm:text-sm"
                 disabled={isLoading}
                 title="Upload Resume (PDF)"
               >
@@ -163,8 +161,8 @@ const MessageInput = ({
                 type="submit"
                 className={`h-10 px-4 rounded-lg transition-all ${
                   isLoading || !userInput.trim()
-                    ? "bg-slate-300 text-slate-500 cursor-not-allowed"
-                    : "bg-emerald-600 text-white hover:bg-emerald-700"
+                    ? "bg-slate-700 text-blue-300 cursor-not-allowed"
+                    : "bg-blue-700 text-white hover:bg-blue-800"
                 }`}
                 disabled={isLoading || !userInput.trim()}
               >
@@ -224,15 +222,15 @@ const WelcomeScreen = ({
   };
 
   return (
-    <div className="flex-1 flex flex-col items-center justify-center p-8 bg-slate-100">
+    <div className="flex-1 flex flex-col items-center justify-center p-8 bg-slate-900">
       <div className="max-w-3xl w-full text-center">
-        <div className="w-14 h-14 mx-auto rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 flex items-center justify-center text-white text-xl font-bold">
+        <div className="w-14 h-14 mx-auto rounded-xl bg-gradient-to-r from-blue-700 to-blue-900 flex items-center justify-center text-white text-xl font-bold">
           🤖
         </div>
-        <h2 className="mt-4 text-2xl sm:text-3xl font-bold text-slate-900">
+        <h2 className="mt-4 text-2xl sm:text-3xl font-bold text-white">
           Start a new chat
         </h2>
-        <p className="mt-2 text-slate-600">
+        <p className="mt-2 text-blue-100">
           Ask anything about your career, or upload a resume for instant
           analysis.
         </p>
@@ -243,7 +241,7 @@ const WelcomeScreen = ({
               key={p}
               onClick={() => onSendMessage(p)}
               disabled={isLoading}
-              className="text-xs sm:text-sm px-3 py-2 rounded-full border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 disabled:opacity-50"
+              className="text-xs sm:text-sm px-3 py-2 rounded-full border border-blue-800 bg-slate-800 hover:bg-blue-900 text-white disabled:opacity-50"
             >
               {p}
             </button>
@@ -254,7 +252,7 @@ const WelcomeScreen = ({
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={isLoading}
-            className="inline-flex items-center justify-center px-4 py-2 rounded-md border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 text-xs sm:text-sm"
+            className="inline-flex items-center justify-center px-4 py-2 rounded-md border border-blue-800 bg-blue-800 text-white hover:bg-blue-700 disabled:opacity-50 text-xs sm:text-sm"
           >
             Upload Resume
           </button>
@@ -496,14 +494,14 @@ export default function ChatSessionPage() {
   // --- JSX Rendering Logic ---
   if (isNewChat && messages.length === 0) {
     return (
-      <div className="h-full flex flex-col bg-slate-100">
-        <div className="bg-white border-b border-slate-200 px-6 py-4 shadow-sm flex-shrink-0 flex items-center justify-between">
-          <h1 className="text-lg font-semibold text-slate-800 truncate">
+      <div className="h-full flex flex-col bg-slate-900">
+        <div className="bg-slate-900 border-b border-blue-900 px-6 py-4 shadow-sm flex-shrink-0 flex items-center justify-between">
+          <h1 className="text-lg font-semibold text-white truncate">
             CareerGPT
           </h1>
           <a
             href="https://carrer-gpt.vercel.app/"
-            className="px-3 py-2 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 transition-all text-xs sm:text-sm font-medium"
+            className="px-3 py-2 rounded-md bg-blue-800 border border-blue-700 text-white hover:bg-blue-700 transition-all text-xs sm:text-sm font-medium"
           >
             Go Back to Dashboard
           </a>
@@ -526,17 +524,17 @@ export default function ChatSessionPage() {
 
   return (
     // Make this the main flex container for the chat view
-    <div className="h-full flex flex-col bg-slate-100">
+    <div className="h-full flex flex-col bg-slate-900">
       {/* Header: This has a fixed height */}
 
-      <div className="bg-white border-b border-slate-200 px-6 py-4 shadow-sm flex-shrink-0 flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-slate-800 truncate">
+      <div className="bg-slate-900 border-b border-blue-900 px-6 py-4 shadow-sm flex-shrink-0 flex items-center justify-between">
+        <h1 className="text-lg font-semibold text-white truncate">
           {session?.title || "Chat"}
         </h1>
         <div className="flex items-center gap-2">
           <a
             href="https://carrer-gpt.vercel.app/"
-            className="px-3 py-2 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 transition-all text-xs sm:text-sm font-medium"
+            className="px-3 py-2 rounded-md bg-blue-800 border border-blue-700 text-white hover:bg-blue-700 transition-all text-xs sm:text-sm font-medium"
           >
             Go Back to Dashboard
           </a>
