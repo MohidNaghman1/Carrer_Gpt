@@ -10,6 +10,8 @@ from core.config import settings
 # Create the SQLAlchemy engine
 engine = create_engine(
     settings.DATABASE_URL,
+      pool_recycle=280,  # Recycle connections every 280 seconds (must be less than server timeout)
+    pool_pre_ping=True # Check if the connection is alive before using it
 )
 
 # Create a SessionLocal class

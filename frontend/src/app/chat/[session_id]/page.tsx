@@ -115,13 +115,22 @@ const MessageInput = ({
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    const allowedTypes = [
+      "application/pdf",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ];
+    const allowedExts = [".pdf", ".doc", ".docx"];
     if (
       file &&
-      (file.type === "application/pdf" || file.name.endsWith(".pdf"))
+      (allowedTypes.includes(file.type) ||
+        allowedExts.some((ext) => file.name.toLowerCase().endsWith(ext)))
     ) {
       onFileUpload(file);
     } else {
-      alert("Please select a PDF file for resume analysis.");
+      alert(
+        "Please select a PDF or Word file (.pdf, .doc, .docx) for resume analysis."
+      );
     }
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
@@ -167,7 +176,7 @@ const MessageInput = ({
         <input
           ref={fileInputRef}
           type="file"
-          accept=".pdf,application/pdf"
+          accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
           onChange={handleFileSelect}
           className="hidden"
         />
@@ -194,13 +203,22 @@ const WelcomeScreen = ({
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    const allowedTypes = [
+      "application/pdf",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ];
+    const allowedExts = [".pdf", ".doc", ".docx"];
     if (
       file &&
-      (file.type === "application/pdf" || file.name.endsWith(".pdf"))
+      (allowedTypes.includes(file.type) ||
+        allowedExts.some((ext) => file.name.toLowerCase().endsWith(ext)))
     ) {
       onFileUpload(file);
     } else if (file) {
-      alert("Please select a PDF file for resume analysis.");
+      alert(
+        "Please select a PDF or Word file (.pdf, .doc, .docx) for resume analysis."
+      );
     }
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
@@ -243,7 +261,7 @@ const WelcomeScreen = ({
           <input
             ref={fileInputRef}
             type="file"
-            accept=".pdf,application/pdf"
+            accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             onChange={handleFileSelect}
             className="hidden"
           />
@@ -315,46 +333,41 @@ export default function ChatSessionPage() {
 
   const handleFileUpload = async (file: File) => {
     setIsLoading(true);
-    const optimisticUploadMessage: ChatMessage = {
+    const optimisticMsg = {
       id: Date.now(),
-      role: "human",
+      role: "human" as const,
       content: `📄 Analyzing uploaded resume: ${file.name}...`,
       session_id: 0,
       timestamp: new Date().toISOString(),
     };
-    setMessages((prev) => [...prev, optimisticUploadMessage]);
+    setMessages((prev) => [...prev, optimisticMsg]);
 
     const formData = new FormData();
     formData.append("resume", file);
 
     try {
-      let currentSessionId = isNewChat ? null : (session_id as string);
+      const endpoint = isNewChat
+        ? "/chat/resume-analysis"
+        : `/chat/${session_id}/resume-analysis`;
+      // This single API call does everything: creates the session (if new),
+      // analyzes the resume, saves the messages, and returns the complete, updated session.
+      const response = await apiClient.post(endpoint, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      const sessionData = response.data;
 
+      // If it was a new chat, we need to navigate to the new URL
       if (isNewChat) {
-        const response = await apiClient.post(
-          "/chat/resume-analysis",
-          formData,
-          { headers: { "Content-Type": "multipart/form-data" } }
-        );
-        const newSession: ChatSession = response.data;
-        currentSessionId = newSession.id.toString();
-        router.replace(`/chat/${currentSessionId}`);
-      } else {
-        const aiResponse = await apiClient.post(
-          `/chat/${currentSessionId}/resume-analysis`,
-          formData,
-          { headers: { "Content-Type": "multipart/form-data" } }
-        );
-        const aiMessage: ChatMessage = aiResponse.data;
-        // Append placeholder AI message and stream content in
-        setMessages((prev) => [...prev, { ...aiMessage, content: "" }]);
-        streamInMessageContent(aiMessage.id, aiMessage.content);
+        router.replace(`/chat/${sessionData.id}`);
       }
+
+      // The response contains the full, updated truth. We just need to display it.
+      setSession(sessionData);
+      setMessages(sessionData.messages || []);
     } catch (error) {
       console.error("Failed to upload resume:", error);
-      setMessages((prev) =>
-        prev.filter((m) => m.id !== optimisticUploadMessage.id)
-      ); // Revert on error
+      setMessages((prev) => prev.filter((m) => m.id !== optimisticMsg.id));
+      // Add a proper error message bubble here
     } finally {
       setIsLoading(false);
     }
