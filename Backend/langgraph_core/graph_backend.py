@@ -477,39 +477,67 @@ def resume_qa_node(state: AgentState) -> dict:
     return {"messages": [AIMessage(content=answer_string)], "next": "supervisor"}
 
 # --- 4. Assemble the Graph ---
+def final_answer_node(state: AgentState) -> dict:
+    """Streams the final answer from the selected agent."""
+    # Get the name of the agent to run from the 'next' field
+    agent_to_run = state['next']
+    print(f"--- Streaming final answer from: {agent_to_run} ---")
+    
+    # We will use a dictionary to map the agent name to its chain and input
+    agent_map = {
+        "CareerAdvisor": (career_advisor_agent, {"question": state["messages"][-1].content}),
+        "JobSearch": (job_search_agent, {"skills": "...", "location": "..."}), # Needs arg parsing
+        "LearningPath": (learning_path_agent, {"current_skills": "...", "goal_role": "..."}), # Needs arg parsing
+        "ResumeQAAgent": (resume_qa_agent, {"resume_context": state.get("resume_text"), "question": state["messages"][-1].content})
+    }
+    
+    if agent_to_run in agent_map:
+        chain, inputs = agent_map[agent_to_run]
+        
+        # Here we stream the output of the final chain
+        full_response = ""
+        for token in chain.stream(inputs):
+            full_response += token
+        
+        # We return the full message at the end, but the stream has happened
+        return {"messages": [AIMessage(content=full_response)]}
+    else:
+        # Fallback for ResumeAnalyst, END, or IRRELEVANT which don't stream
+        return {"messages": [AIMessage(content="Something went wrong.")]}
+
+
+# --- Update your graph wiring ---
+
 workflow = StateGraph(AgentState)
 workflow.add_node("supervisor", supervisor_node)
-workflow.add_node("ResumeAnalyst", resume_analyzer_node)
-workflow.add_node("CareerAdvisor", career_advisor_node)
-workflow.add_node("LearningPath", learning_path_node)
-workflow.add_node("JobSearch", job_search_node)
-workflow.add_node("ResumeQAAgent", resume_qa_node) 
+# ADD THE NEW STREAMING NODE
+workflow.add_node("final_answer", final_answer_node) 
+# The old agent nodes are no longer needed in the graph directly
 
-
-# --- THIS IS THE CORRECTED WIRING ---
-# A single router function reads the 'next' field from the state
+# The router now points to the new final_answer node for most agents
 def router(state: AgentState):
-    return state.get("next", "END")
+    destination = state.get("next", "END")
+    if destination in ["CareerAdvisor", "JobSearch", "LearningPath", "ResumeQAAgent"]:
+        return "final_answer"
+    # ResumeAnalyst and END go directly
+    return destination
 
+workflow.add_node("ResumeAnalyst", resume_analyzer_node) # Keep this for direct calls
 workflow.set_entry_point("supervisor")
+
 workflow.add_conditional_edges(
     "supervisor",
     router,
     {
+        "final_answer": "final_answer",
         "ResumeAnalyst": "ResumeAnalyst",
-        "ResumeQAAgent": "ResumeQAAgent",
-        "CareerAdvisor": "CareerAdvisor",
-        "LearningPath": "LearningPath",
-        "JobSearch": "JobSearch", # This route is correct
         "END": END
     }
 )
 
-# Add the edges back to the supervisor for all agents.
+# After the final answer is generated, the graph ends
+workflow.add_edge("final_answer", END)
 workflow.add_edge("ResumeAnalyst", "supervisor")
-workflow.add_edge("CareerAdvisor", "supervisor")
-workflow.add_edge("LearningPath", "supervisor")
-workflow.add_edge("JobSearch", "supervisor") 
-workflow.add_edge("ResumeQAAgent", "supervisor")
+
 app = workflow.compile()
 print("--- Backend App with Job Search Agent Compiled ---")
