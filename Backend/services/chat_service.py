@@ -102,24 +102,21 @@ def process_user_message(db_session: Session, chat_session: models.ChatSession, 
         full_response += token
     return full_response
 
-def process_resume_file(chat_session_id: int, file_bytes: bytes):
+def process_resume_file(chat_session_id: int, file_bytes: bytes, filename: str):
     """
     Analyzes a resume and saves it. Runs in a background thread.
     Creates its OWN thread-safe database session.
     """
-    print(f"--- THREAD: Processing resume for session_id: {chat_session_id} ---")
     db: Session = SessionLocal() # Create a new session for this thread
     try:
         chat_session = db.query(models.ChatSession).filter(models.ChatSession.id == chat_session_id).first()
         if not chat_session:
-            print(f"--- THREAD ERROR: Session {chat_session_id} not found in DB.")
             return
 
         resume_analyzer_agent = create_resume_analyzer_chain()
-        file_like_object = BytesIO(file_bytes)
-        file_like_object.name = "resume.pdf" # For type detection
-
-        resume_text = extract_text_from_file(file_like_object)
+        
+        # Pass the bytes and filename to the parser
+        resume_text = extract_text_from_file(file_bytes, filename)
 
         if "Error:" in resume_text:
             analysis_string = resume_text
@@ -127,10 +124,9 @@ def process_resume_file(chat_session_id: int, file_bytes: bytes):
             analysis_string = resume_analyzer_agent.invoke({"resume_text": resume_text})
 
         chat_session.resume_text = resume_text
-        db_human_message = models.ChatMessage(session_id=chat_session.id, role="human", content=f"Analyzed resume: {file_like_object.name}")
+        db_human_message = models.ChatMessage(session_id=chat_session.id, role="human", content=f"Analyzed resume: {filename}")
         db_ai_message = models.ChatMessage(session_id=chat_session.id, role="ai", content=analysis_string)
         db.add_all([db_human_message, db_ai_message])
         db.commit()
-        print(f"--- THREAD: Successfully processed and saved resume for session {chat_session_id}. ---")
     finally:
-        db.close() # Always close the sessio
+        db.close()

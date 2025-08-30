@@ -180,7 +180,7 @@ async def create_session_with_resume_analysis(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    # 1. Create the initial chat session. This is the only DB work in this thread.
+    # 1. Create the session
     new_chat_session = models.ChatSession(
         title=f"Resume Analysis: {resume.filename}", 
         user_id=current_user.id
@@ -189,17 +189,17 @@ async def create_session_with_resume_analysis(
     db.commit()
     db.refresh(new_chat_session)
 
+    # 2. Read the file bytes
     file_bytes = await resume.read()
     
-    # 2. Call the service function in the background.
-    # We pass the ID, NOT the session object or the db connection.
+    # 3. Call the service in a threadpool with the correct arguments
     await run_in_threadpool(
         chat_service.process_resume_file, 
         chat_session_id=new_chat_session.id,
-        file_bytes=file_bytes
+        file_bytes=file_bytes,
+        filename=resume.filename # Pass the filename
     )
     
-    # 3. Refresh the object in the main thread to get the latest data
     db.refresh(new_chat_session)
     return new_chat_session
 
@@ -217,14 +217,13 @@ async def add_resume_analysis_to_session(
     
     file_bytes = await resume.read()
 
-    # Call the service, passing only the ID
     await run_in_threadpool(
         chat_service.process_resume_file, 
         chat_session_id=chat_session_obj.id,
-        file_bytes=file_bytes
+        file_bytes=file_bytes,
+        filename=resume.filename # Pass the filename
     )
     
-    # Re-fetch the latest message to ensure it's from an updated session
     db.refresh(chat_session_obj)
     latest_ai_message = db.query(models.ChatMessage).filter(
         models.ChatMessage.session_id == session_id,
@@ -232,7 +231,6 @@ async def add_resume_analysis_to_session(
     ).order_by(models.ChatMessage.timestamp.desc()).first()
 
     return latest_ai_message
-
 @router.post("/{session_id}/messages/stream")
 def post_new_message_stream(
     session_id: int,
