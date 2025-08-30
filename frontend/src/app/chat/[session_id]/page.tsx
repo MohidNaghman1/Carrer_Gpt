@@ -567,7 +567,34 @@ export default function ChatSessionPage() {
       setIsLoading(false);
     }
   };
-  // --- JSX Rendering Logic ---
+
+  async function streamSSE(
+    reader: ReadableStreamDefaultReader<Uint8Array>,
+    onMessage: (msg: string) => void
+  ) {
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      let eventEnd;
+      while ((eventEnd = buffer.indexOf("\n\n")) !== -1) {
+        const rawEvent = buffer.slice(0, eventEnd).trim();
+        buffer = buffer.slice(eventEnd + 2);
+
+        // Only process lines starting with "data:"
+        if (rawEvent.startsWith("data:")) {
+          const data = rawEvent.replace(/^data:\s*/, "");
+          if (data === "[DONE]") return;
+          onMessage(data);
+        }
+      }
+    }
+  }
+
   if (isNewChat && messages.length === 0) {
     return (
       <div className="h-full flex flex-col bg-slate-900">

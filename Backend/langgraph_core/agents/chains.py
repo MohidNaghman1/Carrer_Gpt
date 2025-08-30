@@ -32,16 +32,7 @@ except Exception as e:
     print(f"❌ FATAL ERROR: Failed to initialize RAG components: {e}")
 
 
-def create_career_advisor_chain():
-    """
-    Creates the chain for the Career Advisor agent.
-    This is now a HYBRID chain that can perform both RAG Q&A and generate
-    structured project roadmaps for career path questions.
-    """
-    if not retriever:
-        return lambda inputs: "Error: Career Advisor is offline due to a configuration issue."
-        
-    # In agents/chains.py -> create_career_advisor_chain()
+
 
 def create_career_advisor_chain():
     """
@@ -203,28 +194,29 @@ def create_career_advisor_chain():
         )
     llm_creative = ChatGroq(model="llama3-70b-8192", temperature=0.7)
     rag_chain = prompt | llm_creative | StrOutputParser()
-    def retrieve_and_check(inputs: dict):
+    def retrieve_and_stream(inputs: dict):
         """
-        Retrieves context, and if no context is found, returns a
-        pre-defined helpful message. Otherwise, invokes the LLM chain.
+        Retrieves context, and if no context is found, yields a
+        pre-defined helpful message. Otherwise, it STREAMS the LLM chain's output.
         """
         question = inputs["question"]
-        # Correct common typos before searching the vector store
         corrected_question = preprocess_user_input(question) 
         
         docs = retriever.invoke(corrected_question)
         
-        # --- THIS IS THE BULLETPROOF CHECK ---
         if not docs:
-            # If no documents are found, bypass the LLM entirely.
-            return "I couldn't find specific information about that topic in my knowledge base. Could you try asking about a different career area?"
+            yield "I couldn't find specific information about that topic in my knowledge base. Could you try asking about a different career area?"
+            return # Stop the generator
         
-        # If documents are found, proceed with the RAG chain.
         context = "\n\n".join([doc.page_content for doc in docs])
-        return rag_chain.invoke({"context": context, "question": question})
+    
+        for token in rag_chain.stream({
+            "context": context, 
+            "question": question
+        }):
+            yield token
 
-    # The final chain is now a RunnableLambda that handles the logic
-    return RunnableLambda(retrieve_and_check)
+    return RunnableLambda(retrieve_and_stream)
 def create_resume_analyzer_chain():
     """Creates the chain for the Resume Analyst agent with enhanced professional analysis."""
     prompt = ChatPromptTemplate.from_template(
