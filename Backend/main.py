@@ -22,8 +22,8 @@ app = FastAPI(
 )
 
 origins = [
+    settings.FRONTEND_ORIGIN,
     "http://localhost:3000", # For local development
-    settings.FRONTEND_ORIGIN,  # Your deployed frontend URL from environment
 ]
 
 app.add_middleware(
