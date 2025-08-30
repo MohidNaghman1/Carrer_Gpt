@@ -49,7 +49,6 @@ def create_career_advisor_chain():
     scenarios: general RAG Q&A, roadmap requests with projects, and specific
     course recommendation requests.
     """
-    # ... (your 'if not retriever' check remains the same) ...
 
     # Enhanced Career Advisor Prompt
 

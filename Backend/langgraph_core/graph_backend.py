@@ -1,5 +1,6 @@
 import os,json,re
 import operator
+import re
 from io import BytesIO
 from typing import TypedDict, Annotated, Sequence,Any,Literal,Dict
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
@@ -47,177 +48,230 @@ supervisor_llm = ChatGroq(model="llama3-70b-8192", temperature=0)
 # --- THIS IS THE NEW, SMARTER SUPERVISOR NODE ---
 def supervisor_node(state: AgentState) -> dict:
     """
-    This is the definitive hybrid supervisor. It uses a Python rule to prevent loops
-    and a powerful, rule-based LLM prompt for intelligent routing with strict role identification.
+    Enhanced hybrid supervisor with robust resume follow-up detection.
+    Uses Python rules to prevent loops and intelligent routing for resume-based queries.
     """
     print("---SUPERVISOR ---")
     
-    # --- RULE 1: PYTHON-BASED SAFETY NET (Unbreakable Loop Prevention) ---
-    # This is our ironclad guarantee against infinite loops.
     last_message = state["messages"][-1]
     if isinstance(last_message, AIMessage):
         print("Supervisor Safety Net: Last message was from an agent. Ending turn.")
         return {"next": "END"}
     
+    # Enhanced Resume Follow-up Detection
     if state.get("resume_text"):
         user_input_lower = last_message.content.lower()
-        # Keywords that strongly suggest a follow-up question.
-        follow_up_keywords = ["resume", "cv", "my document", "project", "experience", "skill", "rewrite"]
-        if any(keyword in user_input_lower for keyword in follow_up_keywords):
-            print("---HYBRID SUPERVISOR: Detected resume follow-up. Routing to ResumeQAAgent.---")
+        
+        # Comprehensive follow-up keywords with patterns
+        resume_reference_keywords = [
+            "my resume", "my cv", "the resume", "the cv", "my document", 
+            "the document", "the file", "from my resume", "in my resume",
+            "on my resume", "resume shows", "cv shows", "document shows"
+        ]
+        
+        resume_content_keywords = [
+            "my experience", "my education", "my skills", "my projects", 
+            "my work experience", "my background", "my qualifications",
+            "what are my", "what do i have", "what's my", "where did i work",
+            "what did i study", "my degree", "my job", "my role", "my position"
+        ]
+        
+        resume_action_keywords = [
+            "rewrite", "improve", "update", "modify", "change", "edit",
+            "enhance", "revise", "fix", "adjust", "optimize", "strengthen"
+        ]
+        
+        # Advanced pattern matching for resume follow-ups
+        resume_patterns = [
+            # Direct resume references
+            r"(?:my|the)\s+(?:resume|cv)",
+            r"(?:from|in|on)\s+(?:my|the)\s+(?:resume|cv)",
+            
+            # Possessive patterns about experience/skills
+            r"my\s+(?:experience|skills|education|background|projects)",
+            r"what\s+(?:are|is)\s+my\s+(?:experience|skills|education)",
+            r"where\s+(?:did|have)\s+i\s+(?:work|study)",
+            
+            # Action patterns on resume content
+            r"(?:rewrite|improve|update|modify|change|edit)\s+(?:my|the)",
+            r"(?:enhance|revise|fix|adjust)\s+(?:my\s+)?(?:experience|skills|education)",
+            
+            # Section-specific references
+            r"(?:experience|education|skills|projects?)\s+section",
+            r"(?:work|job)\s+(?:experience|history)",
+            r"(?:technical|programming)\s+skills"
+        ]
+        
+        # Check for direct keyword matches
+        direct_match = any(keyword in user_input_lower for keyword in 
+                          resume_reference_keywords + resume_content_keywords + resume_action_keywords)
+        
+        # Check for pattern matches using regex
+        pattern_match = any(re.search(pattern, user_input_lower) for pattern in resume_patterns)
+        
+        # Additional context clues
+        context_clues = [
+            "based on", "according to", "mentioned in", "listed in",
+            "show that", "indicates", "reflects", "demonstrates"
+        ]
+        context_match = any(clue in user_input_lower for clue in context_clues)
+        
+        # Enhanced detection logic
+        if direct_match or pattern_match or context_match:
+            print(f"---HYBRID SUPERVISOR: Strong resume follow-up detected. Routing to ResumeQAAgent.---")
+            print(f"Detection triggers: Direct={direct_match}, Pattern={pattern_match}, Context={context_match}")
+            return {"next": "ResumeQAAgent"}
+        
+        # Additional heuristic: Check for question words + possessive pronouns
+        question_patterns = [
+            r"(?:what|where|when|how|which|who)\s+.*\s+(?:my|i)",
+            r"(?:can|could|should|would)\s+.*\s+(?:my|i)",
+            r"(?:do|did|have|am|was)\s+i\s+",
+            r"(?:tell|show|explain)\s+.*\s+(?:my|about\s+my)"
+        ]
+        
+        question_match = any(re.search(pattern, user_input_lower) for pattern in question_patterns)
+        
+        if question_match and len(user_input_lower.split()) <= 15:  # Short questions are more likely follow-ups
+            print(f"---HYBRID SUPERVISOR: Question pattern + short length detected. Routing to ResumeQAAgent.---")
             return {"next": "ResumeQAAgent"}
     
-    # --- RULE 2: LLM-POWERED ROUTING (With strict role identification) ---
-    # If the last message was from the user, the LLM will decide the next step.
+    # Prepare context for LLM routing
+    history = "\n".join([f"{msg.type}: {msg.content}" for msg in state["messages"][:-3]])  # More context
+    resume_exists = "Yes" if state.get("resume_text") else "No"
+    
+    # Enhanced prompt with better resume follow-up detection
     prompt = ChatPromptTemplate.from_messages([
-    ("system",
-     "You are **NEXUS**, a strict AI routing specialist. Your ONLY function is to output exactly ONE word from this list: `ResumeAnalyst`, `ResumeQAAgent`, `CareerAdvisor`, `LearningPath`, `JobSearch`, `IRRELEVANT`, `END`.\n\n"
-     
-     "🚨 **ABSOLUTE CONSTRAINTS:** 🚨\n"
-     "- You MUST output exactly ONE word, nothing else\n"
-     "- You CANNOT provide explanations, advice, or content\n"
-     "- You CANNOT answer the user's question directly\n"
-     "- You CANNOT add punctuation, quotes, or formatting\n"
-     "- If you output anything other than the exact agent name, you have FAILED\n"
-     "- Your response must be exactly: ResumeAnalyst OR ResumeQAAgent OR CareerAdvisor OR LearningPath OR JobSearch OR IRRELEVANT OR END\n\n"
-     
-     "**ROUTING DECISION TREE (Follow this exact sequence):**\n\n"
-     
-     "0️⃣ **RELEVANCE FILTER CHECK (FIRST PRIORITY):**\n"
-     "   ➤ Is this request related to careers, technology, professional development, jobs, or education?\n\n"
-     
-     "   **IRRELEVANT TOPICS (Output: IRRELEVANT):**\n"
-     "   🚫 Personal relationships, dating, romance\n"
-     "   🚫 Medical advice, health diagnoses, mental health treatment\n"
-     "   🚫 Legal advice, financial investment advice\n"
-     "   🚫 Politics, controversial social issues\n"
-     "   🚫 Entertainment content (movies, games, sports) unrelated to tech careers\n"
-     "   🚫 Cooking, recipes, food (unless tech industry related)\n"
-     "   🚫 Travel planning (unless for work/conferences)\n"
-     "   🚫 General trivia, random facts unrelated to professional development\n"
-     "   🚫 Creative writing requests (stories, poems) unrelated to professional content\n"
-     "   🚫 Homework help for non-technical subjects\n"
-     "   🚫 Personal life advice unrelated to career\n"
-     "   🚫 Religious or philosophical discussions\n"
-     "   🚫 Shopping recommendations (unless professional tools/equipment)\n"
-     "   🚫 Weather, news, current events (unless industry-specific)\n"
-     "   🚫 Language learning (unless for professional development)\n"
-     "   🚫 Casual conversation, small talk, jokes\n"
-     "   🚫 Technical questions about non-career topics (fixing appliances, car repair)\n\n"
-     
-     "   **BORDERLINE CASES - EVALUATE CAREFULLY:**\n"
-     "   ⚠️ Communication skills → **CareerAdvisor** (if for professional context)\n"
-     "   ⚠️ Time management → **CareerAdvisor** (if for work productivity)\n"
-     "   ⚠️ Stress management → **CareerAdvisor** (if work-related stress)\n"
-     "   ⚠️ Networking → **CareerAdvisor** (professional networking)\n"
-     "   ⚠️ Public speaking → **CareerAdvisor** (if for presentations/interviews)\n"
-     "   ⚠️ Technical writing → **CareerAdvisor** (professional skill)\n"
-     "   ⚠️ Math/Science concepts → **CareerAdvisor** (if related to tech careers)\n\n"
-     
-     "   ➤ If request is IRRELEVANT → Output: **IRRELEVANT**\n"
-     "   ➤ If request is CAREER/TECH RELATED → Continue to step 1\n\n"
+        ("system",
+         "You are **NEXUS**, a strict AI routing specialist. Your ONLY function is to output exactly ONE word from this list: `ResumeAnalyst`, `ResumeQAAgent`, `CareerAdvisor`, `LearningPath`, `JobSearch`, `IRRELEVANT`, `END`.\n\n"
+         
+         "🚨 **ABSOLUTE CONSTRAINTS:** 🚨\n"
+         "- You MUST output exactly ONE word, nothing else\n"
+         "- You CANNOT provide explanations, advice, or content\n"
+         "- You CANNOT answer the user's question directly\n"
+         "- You CANNOT add punctuation, quotes, or formatting\n"
+         "- If you output anything other than the exact agent name, you have FAILED\n"
+         "- Your response must be exactly: ResumeAnalyst OR ResumeQAAgent OR CareerAdvisor OR LearningPath OR JobSearch OR IRRELEVANT OR END\n\n"
+         
+         "**ENHANCED ROUTING DECISION TREE (Follow this exact sequence):**\n\n"
+         
+         "0️⃣ **RELEVANCE FILTER CHECK (FIRST PRIORITY):**\n"
+         "   ➤ Is this request related to careers, technology, professional development, jobs, or education?\n\n"
+         
+         "   **IRRELEVANT TOPICS (Output: IRRELEVANT):**\n"
+         "   🚫 Personal relationships, dating, romance\n"
+         "   🚫 Medical advice, health diagnoses, mental health treatment\n"
+         "   🚫 Legal advice, financial investment advice\n"
+         "   🚫 Politics, controversial social issues\n"
+         "   🚫 Entertainment content (movies, games, sports) unrelated to tech careers\n"
+         "   🚫 Cooking, recipes, food (unless tech industry related)\n"
+         "   🚫 Travel planning (unless for work/conferences)\n"
+         "   🚫 General trivia, random facts unrelated to professional development\n"
+         "   🚫 Creative writing requests (stories, poems) unrelated to professional content\n"
+         "   🚫 Homework help for non-technical subjects\n"
+         "   🚫 Personal life advice unrelated to career\n"
+         "   🚫 Religious or philosophical discussions\n"
+         "   🚫 Shopping recommendations (unless professional tools/equipment)\n"
+         "   🚫 Weather, news, current events (unless industry-specific)\n"
+         "   🚫 Language learning (unless for professional development)\n"
+         "   🚫 Casual conversation, small talk, jokes\n"
+         "   🚫 Technical questions about non-career topics (fixing appliances, car repair)\n\n"
+         
+         "   ➤ If request is IRRELEVANT → Output: **IRRELEVANT**\n"
+         "   ➤ If request is CAREER/TECH RELATED → Continue to step 1\n\n"
 
-     "1️⃣ **RESUME UPLOAD CHECK:**\n"
-     "   ➤ Does the request mention uploading/analyzing a NEW resume/CV/PDF?\n"
-     "   ➤ Keywords: 'analyze my resume', 'review my CV', 'upload resume', 'resume feedback', '.pdf', 'check my resume'\n"
-     "   ➤ If YES → Output: **ResumeAnalyst**\n"
-     "   ➤ If NO → Continue to step 2\n\n"
+         "1️⃣ **RESUME UPLOAD CHECK:**\n"
+         "   ➤ Does the request mention uploading/analyzing a NEW resume/CV/PDF?\n"
+         "   ➤ Keywords: 'analyze my resume', 'review my CV', 'upload resume', 'resume feedback', '.pdf', 'check my resume', 'look at my resume'\n"
+         "   ➤ If YES → Output: **ResumeAnalyst**\n"
+         "   ➤ If NO → Continue to step 2\n\n"
 
-     "2️⃣ **RESUME FOLLOW-UP CHECK:**\n"
-     "   ➤ Is this a follow-up question about a resume that was ALREADY analyzed?\n"
-     "   ➤ Keywords: 'what did my resume say', 'rewrite my project section', 'improve my skills section', 'based on my resume', 'from my resume'\n"
-     "   ➤ Context: Assumes resume is already in conversation context\n"
-     "   ➤ If YES → Output: **ResumeQAAgent**\n"
-     "   ➤ If NO → Continue to step 3\n\n"
+         "2️⃣ **ENHANCED RESUME FOLLOW-UP CHECK (CRITICAL IF RESUME EXISTS):**\n"
+         "   ➤ **Context Check:** Resume in conversation: {resume_exists}\n"
+         "   ➤ If resume exists AND user asks about their personal information/background → HIGH PRIORITY for ResumeQAAgent\n\n"
+         
+         "   **STRONG RESUME FOLLOW-UP INDICATORS:**\n"
+         "   📋 Direct References: 'my resume', 'my CV', 'the document', 'from my resume', 'in my resume'\n"
+         "   📋 Personal Content: 'my experience', 'my skills', 'my education', 'my projects', 'my background'\n"
+         "   📋 Content Questions: 'what are my', 'what do I have', 'where did I work', 'what did I study'\n"
+         "   📋 Modification Requests: 'rewrite my', 'improve my', 'update my', 'change my'\n"
+         "   📋 Section References: 'experience section', 'skills section', 'education section'\n"
+         "   📋 Possessive Patterns: 'my [anything professional]', 'I worked at', 'I studied at'\n\n"
+         
+         "   **EXAMPLES OF RESUME FOLLOW-UPS:**\n"
+         "   ✅ 'What are my technical skills?' → **ResumeQAAgent**\n"
+         "   ✅ 'Where did I work before?' → **ResumeQAAgent**\n"
+         "   ✅ 'Rewrite my project section' → **ResumeQAAgent**\n"
+         "   ✅ 'What does my experience show?' → **ResumeQAAgent**\n"
+         "   ✅ 'List my qualifications' → **ResumeQAAgent**\n"
+         "   ✅ 'My education background' → **ResumeQAAgent**\n"
+         "   ✅ 'What programming languages do I know?' → **ResumeQAAgent**\n\n"
+         
+         "   ➤ If resume exists AND strong follow-up indicators present → Output: **ResumeQAAgent**\n"
+         "   ➤ If NO clear resume follow-up → Continue to step 3\n\n"
 
-     "3️⃣ **JOB SEARCH CHECK:**\n"
-     "   ➤ Is the user asking to FIND/SEARCH for actual job listings/openings?\n"
-     "   ➤ Keywords: 'find jobs', 'search jobs', 'job openings', 'job listings', 'hiring for', 'positions available', 'companies hiring'\n"
-     "   ➤ Examples: 'find Python jobs in NYC', 'search for data science positions', 'job opportunities for AI engineers'\n"
-     "   ➤ If YES → Output: **JobSearch**\n"
-     "   ➤ If NO → Continue to step 4\n\n"
-     
-     "4️⃣ **PERSONALIZED LEARNING PATH CHECK:**\n"
-     "   ➤ Does the request meet ALL these conditions:\n"
-     "     • User mentions their CURRENT skills/background/experience\n"
-     "     • AND asks for a personalized transition/learning path to a specific role\n"
-     "   ➤ Keywords: 'I know', 'I have experience in', 'I'm currently', 'my background is', 'how do I become', 'transition from X to Y', 'roadmap to become'\n"
-     "   ➤ Examples: 'I know Python, how to become data scientist?', 'I'm a web dev, want to transition to AI'\n"
-     "   ➤ If ALL conditions met → Output: **LearningPath**\n"
-     "   ➤ If NOT all conditions met → Continue to step 5\n\n"
-     
-     "5️⃣ **CONVERSATION END CHECK:**\n"
-     "   ➤ Is this a clear conversation ending?\n"
-     "   ➤ Keywords: 'thank you', 'thanks', 'goodbye', 'bye', 'that's all', 'done', 'perfect', 'got it', 'appreciate it'\n"
-     "   ➤ If YES → Output: **END**\n"
-     "   ➤ If NO → Continue to step 6\n\n"
-     
-     "6️⃣ **DEFAULT FALLBACK:**\n"
-     "   ➤ Everything else that is CAREER/TECH RELATED goes to CareerAdvisor\n"
-     "   ➤ This includes: general career questions, job role descriptions, interview tips, salary info, skill requirements, coding practice\n"
-     "   ➤ Output: **CareerAdvisor**\n\n"
-     
-     "**ROUTING EXAMPLES:**\n\n"
-     
-     "**IRRELEVANT Examples (Output: IRRELEVANT):**\n"
-     "• 'What's the weather like today?' → **IRRELEVANT**\n"
-     "• 'Can you help me with my relationship problems?' → **IRRELEVANT**\n"
-     "• 'What's a good recipe for pasta?' → **IRRELEVANT**\n"
-     "• 'Tell me a joke' → **IRRELEVANT**\n"
-     "• 'What's the capital of France?' → **IRRELEVANT**\n"
-     "• 'Can you write me a love poem?' → **IRRELEVANT**\n"
-     "• 'How to fix my car engine?' → **IRRELEVANT**\n"
-     "• 'Best vacation spots in Europe?' → **IRRELEVANT**\n"
-     "• 'What movie should I watch tonight?' → **IRRELEVANT**\n"
-     "• 'Help me with my math homework on algebra' → **IRRELEVANT** (unless related to programming)\n\n"
-     
-     "**CAREER/TECH RELATED Examples:**\n"
-     "• 'Best websites for OOP practice' → **CareerAdvisor**\n"
-     "• 'Find me Python jobs in Seattle' → **JobSearch**\n"
-     "• 'I know Java, how to become AI engineer?' → **LearningPath**\n"
-     "• 'What does a data scientist do?' → **CareerAdvisor**\n"
-     "• 'Analyze my resume.pdf' → **ResumeAnalyst**\n"
-     "• 'Thanks for the help' → **END**\n"
-     "• 'How to improve communication skills for tech interviews?' → **CareerAdvisor**\n"
-     "• 'What programming languages should I learn?' → **CareerAdvisor**\n"
-     "• 'Salary range for software engineers?' → **CareerAdvisor**\n"
-     "• 'How to prepare for coding interviews?' → **CareerAdvisor**\n\n"
-     
-     "**BORDERLINE Examples (Evaluate Context):**\n"
-     "• 'How to manage stress?' → **IRRELEVANT** (unless: 'How to manage work stress as a developer?' → **CareerAdvisor**)\n"
-     "• 'Public speaking tips?' → **IRRELEVANT** (unless: 'Public speaking for technical presentations?' → **CareerAdvisor**)\n"
-     "• 'Time management advice?' → **IRRELEVANT** (unless: 'Time management for remote developers?' → **CareerAdvisor**)\n"
-     "• 'Learning Spanish' → **IRRELEVANT** (unless: 'Learning Spanish for tech job in Mexico?' → **CareerAdvisor**)\n\n"
-     
-     "🔴 **FAILURE EXAMPLES - DO NOT DO THIS:** 🔴\n"
-     "❌ 'Based on your request about cooking, I recommend IRRELEVANT because...'\n"
-     "❌ 'IRRELEVANT - This is not related to careers'\n"
-     "❌ 'The best response for this would be IRRELEVANT'\n"
-     "❌ Any explanation or reasoning\n\n"
-     
-     "✅ **SUCCESS EXAMPLES - DO THIS:** ✅\n"
-     "✅ 'IRRELEVANT'\n"
-     "✅ 'CareerAdvisor'\n"
-     "✅ 'JobSearch'\n"
-     "✅ 'LearningPath'\n"
-     "✅ 'END'\n\n"
-     
-     "**FINAL INSTRUCTION:** \n"
-     "1. FIRST: Check if the request is relevant to careers/tech/professional development\n"
-     "2. If IRRELEVANT: Output 'IRRELEVANT'\n"
-     "3. If RELEVANT: Follow the decision tree steps 1-6\n"
-     "4. Output EXACTLY ONE WORD with no additional text"
-    ),
-    ("user", "User request: '{request}'\n\nRouting decision:")
-])
+         "3️⃣ **JOB SEARCH CHECK:**\n"
+         "   ➤ Is the user asking to FIND/SEARCH for actual job listings/openings?\n"
+         "   ➤ Keywords: 'find jobs', 'search jobs', 'job openings', 'job listings', 'hiring for', 'positions available', 'companies hiring'\n"
+         "   ➤ Examples: 'find Python jobs in NYC', 'search for data science positions', 'job opportunities for AI engineers'\n"
+         "   ➤ If YES → Output: **JobSearch**\n"
+         "   ➤ If NO → Continue to step 4\n\n"
+         
+         "4️⃣ **PERSONALIZED LEARNING PATH CHECK:**\n"
+         "   ➤ Does the request meet ALL these conditions:\n"
+         "     • User mentions their CURRENT skills/background/experience\n"
+         "     • AND asks for a personalized transition/learning path to a specific role\n"
+         "   ➤ Keywords: 'I know', 'I have experience in', 'I'm currently', 'my background is', 'how do I become', 'transition from X to Y', 'roadmap to become'\n"
+         "   ➤ Examples: 'I know Python, how to become data scientist?', 'I'm a web dev, want to transition to AI'\n"
+         "   ➤ **IMPORTANT:** If user asks about skills but resume exists, prefer ResumeQAAgent over LearningPath\n"
+         "   ➤ If ALL conditions met AND no resume context → Output: **LearningPath**\n"
+         "   ➤ If NOT all conditions met → Continue to step 5\n\n"
+         
+         "5️⃣ **CONVERSATION END CHECK:**\n"
+         "   ➤ Is this a clear conversation ending?\n"
+         "   ➤ Keywords: 'thank you', 'thanks', 'goodbye', 'bye', 'that's all', 'done', 'perfect', 'got it', 'appreciate it'\n"
+         "   ➤ If YES → Output: **END**\n"
+         "   ➤ If NO → Continue to step 6\n\n"
+         
+         "6️⃣ **DEFAULT FALLBACK:**\n"
+         "   ➤ Everything else that is CAREER/TECH RELATED goes to CareerAdvisor\n"
+         "   ➤ This includes: general career questions, job role descriptions, interview tips, salary info, skill requirements, coding practice\n"
+         "   ➤ Output: **CareerAdvisor**\n\n"
+         
+         "**CRITICAL PRIORITY RULES:**\n"
+         "🔥 If resume exists + personal/possessive references → **ResumeQAAgent** (highest priority)\n"
+         "🔥 Resume follow-ups override general career advice routing\n"
+         "🔥 'My [professional term]' + resume exists = **ResumeQAAgent**\n"
+         "🔥 Question about user's own background + resume exists = **ResumeQAAgent**\n\n"
+         
+         "**ADDITIONAL CONTEXT FOR YOUR DECISION:**\n"
+         "**Resume in Context:** `{resume_exists}`\n"
+         "**Recent Conversation History:**\n{history}\n\n"
+         
+         "**FINAL INSTRUCTION:** \n"
+         "1. FIRST: Check if request is relevant to careers/tech/professional development\n"
+         "2. If IRRELEVANT: Output 'IRRELEVANT'\n"
+         "3. If RELEVANT: Follow decision tree steps 1-6 with SPECIAL ATTENTION to resume follow-ups\n"
+         "4. PRIORITY: If resume exists and user asks about their personal info → **ResumeQAAgent**\n"
+         "5. Output EXACTLY ONE WORD with no additional text"
+        ),
+        ("user", "User request: '{request}'\n\nRouting decision:")
+    ])
+    
     original_input = last_message.content
     processed_input = preprocess_user_input(original_input)
+    
     runnable = prompt | supervisor_llm | StrOutputParser()
-    next_agent = runnable.invoke({"request": processed_input})
+    next_agent = runnable.invoke({
+        "request": processed_input,
+        "resume_exists": resume_exists,
+        "history": history
+    })
     
     cleaned_destination = next_agent.strip().replace("`", "").replace("'", "").replace('"', '')
     print(f"Supervisor LLM Decision: '{cleaned_destination}'")
-    valid_destinations = ["ResumeAnalyst", "ResumeQAAgent", "CareerAdvisor", "LearningPath", "JobSearch", "END"]
+    
+    valid_destinations = ["ResumeAnalyst", "ResumeQAAgent", "CareerAdvisor", "LearningPath", "JobSearch", "IRRELEVANT", "END"]
     
     if cleaned_destination in valid_destinations:
         return {"next": cleaned_destination}
@@ -225,9 +279,6 @@ def supervisor_node(state: AgentState) -> dict:
         print(f"---SUPERVISOR WARNING: LLM returned invalid destination '{cleaned_destination}'. Defaulting to CareerAdvisor.---")
         return {"next": "CareerAdvisor"}
     
-# In Graph_backend.py
-
-# --- REPLACE your old career_advisor_node with this new, robust version ---
 def career_advisor_node(state: AgentState) -> dict:
     print("---AGENT: CareerAdvisor---")
     answer_string = ""
@@ -368,14 +419,7 @@ def job_search_node(state: AgentState) -> dict:
         job_postings_summary = "I'm sorry, I had trouble understanding your request for a job search. Could you please clearly state the job title and location you're interested in?"
 
     return {"messages": [AIMessage(content=job_postings_summary)], "next": "supervisor"}
-# In Graph_backend.py
 
-# In Graph_backend.py
-
-# In Graph_backend.py
-
-# You may need to import BytesIO
-from io import BytesIO
 
 def resume_analyzer_node(state: AgentState) -> dict:
     print("---AGENT: ResumeAnalyst---")
