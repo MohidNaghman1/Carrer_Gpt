@@ -509,35 +509,54 @@ def final_answer_node(state: AgentState) -> dict:
 # --- Update your graph wiring ---
 
 workflow = StateGraph(AgentState)
+
+# Add all the original nodes. They are the workers.
 workflow.add_node("supervisor", supervisor_node)
-# ADD THE NEW STREAMING NODE
-workflow.add_node("final_answer", final_answer_node) 
-# The old agent nodes are no longer needed in the graph directly
+workflow.add_node("ResumeAnalyst", resume_analyzer_node)
+workflow.add_node("ResumeQAAgent", resume_qa_node)
+workflow.add_node("CareerAdvisor", career_advisor_node)
+workflow.add_node("LearningPath", learning_path_node)
+workflow.add_node("JobSearch", job_search_node)
 
-# The router now points to the new final_answer node for most agents
-def router(state: AgentState):
-    destination = state.get("next", "END")
-    if destination in ["CareerAdvisor", "JobSearch", "LearningPath", "ResumeQAAgent"]:
-        return "final_answer"
-    # ResumeAnalyst and END go directly
-    return destination
+# This is a new, special node just for handling irrelevant queries.
+def irrelevant_node(state: AgentState) -> dict:
+    return {"messages": [AIMessage(content="I am a career assistant and can only help with career-related questions. How can I assist you today?")]}
 
-workflow.add_node("ResumeAnalyst", resume_analyzer_node) # Keep this for direct calls
+workflow.add_node("IRRELEVANT", irrelevant_node)
+
+# --- 5. Wire the Graph Correctly ---
+
 workflow.set_entry_point("supervisor")
+
+# The conditional router now points each task to its dedicated worker node.
+def router(state: AgentState):
+    # This directly returns the destination chosen by the supervisor.
+    return state.get("next", "END")
 
 workflow.add_conditional_edges(
     "supervisor",
     router,
     {
-        "final_answer": "final_answer",
         "ResumeAnalyst": "ResumeAnalyst",
+        "ResumeQAAgent": "ResumeQAAgent",
+        "CareerAdvisor": "CareerAdvisor",
+        "LearningPath": "LearningPath",
+        "JobSearch": "JobSearch",
+        "IRRELEVANT": "IRRELEVANT", # Add the route for irrelevant
         "END": END
     }
 )
 
-# After the final answer is generated, the graph ends
-workflow.add_edge("final_answer", END)
+# After each worker node runs, it goes back to the supervisor.
+# The supervisor's safety net will see the AIMessage and end the turn.
 workflow.add_edge("ResumeAnalyst", "supervisor")
+workflow.add_edge("ResumeQAAgent", "supervisor")
+workflow.add_edge("CareerAdvisor", "supervisor")
+workflow.add_edge("LearningPath", "supervisor")
+workflow.add_edge("JobSearch", "supervisor")
+# After the irrelevant node, the graph should end.
+workflow.add_edge("IRRELEVANT", END)
 
+# Compile the final application graph.
 app = workflow.compile()
-print("--- Backend App with Job Search Agent Compiled ---")
+print("--- Backend App with Corrected Graph Logic Compiled ---")
