@@ -501,6 +501,7 @@ def create_resume_analyzer_chain():
     **Success Probability:** [Likelihood of achieving career objectives with optimizations]
     """
 )
+    return prompt | llm_creative | StrOutputParser() 
 
 
 def create_learning_path_chain():
@@ -536,7 +537,6 @@ def create_learning_path_chain():
         <input_data>
         **Current Skills:** {current_skills}
         **Target Role:** {goal_role}
-        **Additional Context:** {additional_context}
         </input_data>
 
         <output_format>
