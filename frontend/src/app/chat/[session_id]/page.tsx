@@ -3,9 +3,79 @@
 import React from "react";
 import { useEffect, useState, useRef } from "react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import rehypeRaw from "rehype-raw";
+// @ts-ignore
+import emoji from "emoji-dictionary";
 import { useParams, useRouter } from "next/navigation";
 import apiClient from "../../../services/api";
 import { ChatMessage, ChatSession } from "../../../types";
+
+const markdownComponents = {
+  text: (props: any) => {
+    // Replace :emoji: shortcodes with actual emoji
+    const newText = props.children
+      .map((child: string) =>
+        typeof child === "string"
+          ? child.replace(
+              /:([a-zA-Z0-9_+-]+):/g,
+              (name) => emoji.getUnicode(name) || name
+            )
+          : child
+      )
+      .join("");
+    return <span>{newText}</span>;
+  },
+  // Optional: style headings, lists, etc.
+  h1: (props: any) => (
+    <h1 className="text-2xl font-bold text-blue-300 mb-2" {...props} />
+  ),
+  h2: (props: any) => (
+    <h2 className="text-xl font-semibold text-blue-200 mb-1" {...props} />
+  ),
+  h3: (props: any) => (
+    <h3 className="text-lg font-semibold text-blue-100 mb-1" {...props} />
+  ),
+  ul: (props: any) => (
+    <ul className="list-disc list-inside ml-4 mb-2 text-blue-100" {...props} />
+  ),
+  ol: (props: any) => (
+    <ol
+      className="list-decimal list-inside ml-4 mb-2 text-blue-100"
+      {...props}
+    />
+  ),
+  li: (props: any) => <li className="mb-1" {...props} />,
+  strong: (props: any) => (
+    <strong className="text-yellow-300 font-semibold" {...props} />
+  ),
+  blockquote: (props: any) => (
+    <blockquote
+      className="border-l-4 border-blue-400 pl-4 italic text-blue-200 my-2"
+      {...props}
+    />
+  ),
+  code: (props: any) => (
+    <code
+      className="bg-slate-800 text-blue-200 px-1 py-0.5 rounded"
+      {...props}
+    />
+  ),
+  pre: (props: any) => (
+    <pre
+      className="bg-slate-800 text-blue-200 p-2 rounded mb-2 overflow-x-auto"
+      {...props}
+    />
+  ),
+  a: (props: any) => (
+    <a
+      className="text-blue-400 underline hover:text-blue-200"
+      target="_blank"
+      rel="noopener noreferrer"
+      {...props}
+    />
+  ),
+};
 
 const MessageBubble = React.memo(
   ({
@@ -73,7 +143,13 @@ const MessageBubble = React.memo(
                   {streaming ? (
                     message.content // plain text while streaming
                   ) : (
-                    <ReactMarkdown>{message.content}</ReactMarkdown> // markdown when done
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      rehypePlugins={[rehypeRaw]}
+                      components={markdownComponents}
+                    >
+                      {message.content}
+                    </ReactMarkdown>
                   )}
                 </div>
               )}
