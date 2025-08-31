@@ -30,7 +30,7 @@ class JobSearchParams(BaseModel):
     location: str = Field(description="The geographic location the user wants to search in. Default to 'Not specified' if none is mentioned.")
 
 
-llm_parser = ChatGroq(model="llama3-70b-8192", temperature=0).with_structured_output(JobSearchParams)
+llm_parser = ChatGroq(model="llama-3.1-8b-instant", temperature=0).with_structured_output(JobSearchParams)
 
 # --- 2. Initialization is correct ---
 resume_analyzer_agent = create_resume_analyzer_chain()
@@ -39,7 +39,7 @@ learning_path_agent = create_learning_path_chain()
 job_search_agent = create_job_search_chain()
 resume_qa_agent = create_resume_qa_chain()
 
-supervisor_llm = ChatGroq(model="llama3-70b-8192", temperature=0)
+supervisor_llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0)
 
 
 # --- 3. Node Definitions ---
@@ -313,7 +313,7 @@ def learning_path_node(state: AgentState) -> dict:
     user_input = state["messages"][-1].content
     
     # We use a simple, fast LLM for the parsing task.
-    llm_parser = ChatGroq(model="llama3-8b-8192", temperature=0)
+    llm_parser = ChatGroq(model="llama-3.1-8b-instant", temperature=0)
 
     # Step 1: A much stricter prompt to guide the LLM.
     parser_prompt = ChatPromptTemplate.from_template(

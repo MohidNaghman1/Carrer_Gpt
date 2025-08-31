@@ -23,7 +23,8 @@ app = FastAPI(
 
 origins = [
     settings.FRONTEND_ORIGIN,
-    "http://localhost:3000", # For local development
+    "http://localhost:3000",         # Local development
+    "*",  # Temporary wildcard for debugging - REMOVE in production
 ]
 
 app.add_middleware(
@@ -32,6 +33,8 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],  # Allows all methods
     allow_headers=["*"],  # Allows all headers
+    expose_headers=["*"],
+
 )
 # ------------------------------------
 

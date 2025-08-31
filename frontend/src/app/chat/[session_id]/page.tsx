@@ -92,9 +92,7 @@ const MessageBubble = React.memo(
       <div
         className={`flex w-full mb-6 ${isAi ? "justify-start" : "justify-end"}`}
       >
-        <div
-          className={`flex max-w-4xl ${isAi ? "flex-row" : "flex-row-reverse"}`}
-        >
+        <div className={`flex max-w-4xl ${isAi ? "flex-row" : "flex-row-reverse"}`}>
           <div className={`flex-shrink-0 ${isAi ? "mr-3" : "ml-3"}`}>
             <div
               className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
@@ -134,14 +132,15 @@ const MessageBubble = React.memo(
                       style={{ animationDelay: "0.2s" }}
                     ></div>
                   </div>
-                  <span className="text-blue-200 text-sm ml-2">
-                    Thinking...
-                  </span>
+                  <span className="text-blue-200 text-sm ml-2">Thinking...</span>
                 </div>
               ) : (
                 <div className="prose prose-sm max-w-none prose-invert">
                   {streaming ? (
-                    message.content // plain text while streaming
+                    <div className="relative">
+                      {message.content}
+                      <span className="inline-block w-2 h-5 bg-blue-400 animate-pulse ml-1 align-middle" />
+                    </div>
                   ) : (
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
@@ -195,6 +194,7 @@ const MessageInput = ({
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ];
     const allowedExts = [".pdf", ".doc", ".docx"];
+
     if (
       file &&
       (allowedTypes.includes(file.type) ||
@@ -283,6 +283,7 @@ const WelcomeScreen = ({
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ];
     const allowedExts = [".pdf", ".doc", ".docx"];
+
     if (
       file &&
       (allowedTypes.includes(file.type) ||
@@ -363,25 +364,8 @@ export default function ChatSessionPage() {
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
-  useEffect(scrollToBottom, [messages, isLoading]);
 
-  const streamInMessageContent = (messageId: number, fullContent: string) => {
-    setStreamingMessageId(messageId);
-    const tokens = Array.from(fullContent);
-    let index = 0;
-    const chunkSize = 3;
-    const interval = setInterval(() => {
-      index += chunkSize;
-      const next = fullContent.slice(0, index);
-      setMessages((prev) =>
-        prev.map((m) => (m.id === messageId ? { ...m, content: next } : m))
-      );
-      if (index >= tokens.length) {
-        clearInterval(interval);
-        setStreamingMessageId(null);
-      }
-    }, 25);
-  };
+  useEffect(scrollToBottom, [messages, isLoading]);
 
   useEffect(() => {
     if (!isNewChat && session_id && typeof session_id === "string") {
@@ -423,25 +407,20 @@ export default function ChatSessionPage() {
       const endpoint = isNewChat
         ? "/chat/resume-analysis"
         : `/chat/${session_id}/resume-analysis`;
-      // This single API call does everything: creates the session (if new),
-      // analyzes the resume, saves the messages, and returns the complete, updated session.
       const response = await apiClient.post(endpoint, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
       const sessionData = response.data;
 
-      // If it was a new chat, we need to navigate to the new URL
       if (isNewChat) {
         router.replace(`/chat/${sessionData.id}`);
       }
 
-      // The response contains the full, updated truth. We just need to display it.
       setSession(sessionData);
       setMessages(sessionData.messages || []);
     } catch (error) {
       console.error("Failed to upload resume:", error);
       setMessages((prev) => prev.filter((m) => m.id !== optimisticMsg.id));
-      // Add a proper error message bubble here
     } finally {
       setIsLoading(false);
     }
@@ -449,12 +428,12 @@ export default function ChatSessionPage() {
 
   const handleSendMessage = async (userMessageContent: string) => {
     setIsLoading(true);
-
+    
     const optimisticUserMessage: ChatMessage = {
       id: Date.now(),
       role: "human",
       content: userMessageContent,
-      session_id: 0, // Placeholder, will be updated
+      session_id: 0,
       timestamp: new Date().toISOString(),
     };
     setMessages((prev) => [...prev, optimisticUserMessage]);
@@ -464,27 +443,21 @@ export default function ChatSessionPage() {
 
       // --- Case 1: This is the VERY FIRST message of a NEW chat ---
       if (isNewChat) {
-        // This endpoint creates the session, gets the first AI response, and returns the whole package.
-        // It is NOT a streaming call.
         const response = await apiClient.post("/chat/", {
           first_message: userMessageContent,
         });
         const newSession: ChatSession = response.data;
         currentSessionId = newSession.id.toString();
 
-        // Navigate to the new URL and display the complete first turn from the backend.
         router.replace(`/chat/${currentSessionId}`, { scroll: false });
         setSession(newSession);
-        setMessages(newSession.messages || []); // This now includes the first user and AI messages.
-
-        // The first-turn transaction is complete, so we can stop loading.
+        setMessages(newSession.messages || []);
         setIsLoading(false);
-        return; // Exit the function here.
+        return;
       }
 
       // --- Case 2: This is a message in an EXISTING chat ---
       if (currentSessionId) {
-        // For existing chats, we use the efficient streaming endpoint.
         const token = localStorage.getItem("accessToken");
         const url = `${apiClient.defaults.baseURL}/chat/${currentSessionId}/messages/stream`;
 
@@ -502,55 +475,74 @@ export default function ChatSessionPage() {
           throw new Error("Stream request failed.");
         }
 
-        // Create a correctly-typed placeholder for the AI's streaming response.
-        const aiMessageId = Date.now() + 1; // Use a new unique ID
+        // Create AI message placeholder
+        const aiMessageId = Date.now() + 1;
         const aiPlaceholder: ChatMessage = {
           id: aiMessageId,
           role: "ai",
-          content: "", // Start with empty content
+          content: "",
           session_id: Number(currentSessionId),
           timestamp: new Date().toISOString(),
         };
         setMessages((prev) => [...prev, aiPlaceholder]);
+        setStreamingMessageId(aiMessageId);
 
+        // Stream the response
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;
+        let buffer = "";
 
-          const decodedChunk = decoder.decode(value);
-          const events = decodedChunk.split("\n\n");
-          for (const event of events) {
-            if (event.startsWith("data: ")) {
-              const dataStr = event.slice(6);
-              if (dataStr.trim() === "[DONE]") {
-                break;
-              }
-              try {
-                const data = JSON.parse(dataStr);
-                if (data.token) {
-                  setMessages((prev) =>
-                    prev.map((m) =>
-                      m.id === aiMessageId
-                        ? { ...m, content: m.content + data.token }
-                        : m
-                    )
-                  );
+        try {
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            
+            // Process complete events
+            let eventEnd;
+            while ((eventEnd = buffer.indexOf("\n\n")) !== -1) {
+              const event = buffer.slice(0, eventEnd).trim();
+              buffer = buffer.slice(eventEnd + 2);
+
+              if (event.startsWith("data: ")) {
+                const dataStr = event.slice(6);
+                if (dataStr.trim() === "[DONE]") {
+                  setStreamingMessageId(null);
+                  setIsLoading(false);
+                  return;
                 }
-                if (data.error) {
-                  throw new Error(data.error);
+                
+                try {
+                  const data = JSON.parse(dataStr);
+                  if (data.token) {
+                    setMessages((prev) =>
+                      prev.map((m) =>
+                        m.id === aiMessageId
+                          ? { ...m, content: m.content + data.token }
+                          : m
+                      )
+                    );
+                  }
+                  if (data.error) {
+                    throw new Error(data.error);
+                  }
+                } catch (parseError) {
+                  console.error("Failed to parse stream data:", dataStr);
                 }
-              } catch (e) {
-                console.error("Failed to parse stream data:", dataStr);
               }
             }
           }
+        } catch (streamError) {
+          console.error("Streaming error:", streamError);
+          throw streamError;
+        } finally {
+          setStreamingMessageId(null);
+          setIsLoading(false);
         }
       }
     } catch (error) {
       console.error("Failed to send message:", error);
-      // Add a clear error message to the chat UI
       const errorMessage: ChatMessage = {
         id: Date.now() + 1,
         role: "ai",
@@ -558,42 +550,15 @@ export default function ChatSessionPage() {
         session_id: isNewChat ? 0 : Number(session_id),
         timestamp: new Date().toISOString(),
       };
-      // Remove the optimistic user message and add the error
       setMessages((prev) => [
         ...prev.filter((m) => m.id !== optimisticUserMessage.id),
         errorMessage,
       ]);
     } finally {
       setIsLoading(false);
+      setStreamingMessageId(null);
     }
   };
-
-  async function streamSSE(
-    reader: ReadableStreamDefaultReader<Uint8Array>,
-    onMessage: (msg: string) => void
-  ) {
-    const decoder = new TextDecoder();
-    let buffer = "";
-
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-
-      let eventEnd;
-      while ((eventEnd = buffer.indexOf("\n\n")) !== -1) {
-        const rawEvent = buffer.slice(0, eventEnd).trim();
-        buffer = buffer.slice(eventEnd + 2);
-
-        // Only process lines starting with "data:"
-        if (rawEvent.startsWith("data:")) {
-          const data = rawEvent.replace(/^data:\s*/, "");
-          if (data === "[DONE]") return;
-          onMessage(data);
-        }
-      }
-    }
-  }
 
   if (isNewChat && messages.length === 0) {
     return (
@@ -623,13 +588,8 @@ export default function ChatSessionPage() {
     );
   }
 
-  // In your ChatSessionPage component's return statement for an existing chat:
-
   return (
-    // Make this the main flex container for the chat view
     <div className="h-full flex flex-col bg-slate-900">
-      {/* Header: This has a fixed height */}
-
       <div className="bg-slate-900 border-b border-blue-900 px-6 py-4 shadow-sm flex-shrink-0 flex items-center justify-between">
         <h1 className="text-lg font-semibold text-white truncate">
           {session?.title || "Chat"}
@@ -641,13 +601,9 @@ export default function ChatSessionPage() {
           >
             Go Back to Dashboard
           </a>
-          {/* Add your New Chat and Logout buttons here if not already present */}
         </div>
       </div>
 
-      {/* Messages area: This is the key change. */}
-      {/* We use flex-1 and overflow-y-auto HERE to make THIS the scrollable container. */}
-      {/* The inner div will grow, but the container's boundaries are fixed. */}
       <div className="flex-1 overflow-y-auto px-6 py-4">
         <div className="max-w-4xl mx-auto">
           {messages.map((msg) => (

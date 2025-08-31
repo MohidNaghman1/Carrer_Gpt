@@ -19,8 +19,8 @@ nest_asyncio.apply()
 load_dotenv()
 
 # --- Shared Components ---
-llm = ChatGroq(model="llama3-70b-8192", temperature=0.2)
-llm_creative = ChatGroq(model="llama3-70b-8192", temperature=0.4)
+llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.2)
+llm_creative = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.4)
 # Global variables to hold the RAG components
 retriever = None
 try:
@@ -192,7 +192,7 @@ def create_career_advisor_chain():
             [Provide your comprehensive, knowledge-base driven response here, followed by any triggered specialized sections above]
             """
         )
-    llm_creative = ChatGroq(model="llama3-70b-8192", temperature=0.7)
+    llm_creative = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.7)
     rag_chain = prompt | llm_creative | StrOutputParser()
     def retrieve_and_stream(inputs: dict):
         """
