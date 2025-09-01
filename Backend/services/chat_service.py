@@ -1,5 +1,3 @@
-# Backend/services/chat_service.py
-
 import json
 import re
 import traceback
@@ -9,7 +7,7 @@ from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from pydantic.v1 import Field, BaseModel
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.messages import HumanMessage
 from sqlalchemy.orm import Session
 
 from db import models
@@ -108,20 +106,17 @@ def _execute_agent_node(agent_name: str, user_prompt: str, resume_text: str) -> 
     """
     try:
         # Route to appropriate agent chain
-        if agent_name == "ResumeQAAgent" and resume_text:
+        if agent_name == "ResumeQAAgent":
             print("--- EXECUTING: ResumeQAAgent ---")
             agent_chain = create_resume_qa_chain()
             result = agent_chain.invoke({
-                "resume_context": resume_text,
+                "resume_context": resume_text if resume_text else "No resume provided",
                 "question": user_prompt
             })
             
         elif agent_name == "LearningPath":
             print("--- EXECUTING: LearningPath ---")
-            # Use LLM parser to extract current_skills and goal_role from user query
-            from langchain_groq import ChatGroq
-            from langchain_core.prompts import ChatPromptTemplate
-            from langchain_core.output_parsers import StrOutputParser
+
             
             llm_parser = ChatGroq(model="llama-3.1-8b-instant", temperature=0)
             parser_prompt = ChatPromptTemplate.from_template(
@@ -165,6 +160,8 @@ def _execute_agent_node(agent_name: str, user_prompt: str, resume_text: str) -> 
             
         elif agent_name == "JobSearch":
             print("--- EXECUTING: JobSearch ---")
+            # Use LLM parser to extract skills and location from user query
+
             
             class JobSearchParams(BaseModel):
                 skills: str = Field(description="The job title or primary skills the user is looking for.")
@@ -208,17 +205,32 @@ def _execute_agent_node(agent_name: str, user_prompt: str, resume_text: str) -> 
                 "resume_text": resume_text if resume_text else "No resume provided"
             })
             
+        elif agent_name == "ResumeQAAgent":
+            print("--- EXECUTING: ResumeQAAgent ---")
+            agent_chain = create_resume_qa_chain()
+            result = agent_chain.invoke({
+                "resume_context": resume_text if resume_text else "No resume provided",
+                "question": user_prompt
+            })
+            
         else:
             # Default to CareerAdvisor
             print("--- EXECUTING: CareerAdvisor ---")
             agent_chain = create_career_advisor_chain()
             result = agent_chain.invoke({
                 "question": user_prompt,
-                "resume_context": resume_text
+                "resume_context": resume_text if resume_text else "No resume provided"
             })
         
         # Return the result directly (it's already a string)
-        return str(result) if result else "I apologize, but I couldn't generate a response. Please try again."
+        print(f"--- AGENT RESULT TYPE: {type(result)} ---")
+        print(f"--- AGENT RESULT LENGTH: {len(str(result)) if result else 0} ---")
+        
+        if result:
+            return str(result)
+        else:
+            print("--- AGENT RETURNED EMPTY RESULT ---")
+            return "I apologize, but I couldn't generate a response. Please try again."
             
     except Exception as e:
         print(f"--- AGENT EXECUTION ERROR for {agent_name}: {e} ---")
