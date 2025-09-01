@@ -24,41 +24,66 @@ from langchain_core.output_parsers import StrOutputParser
 def process_user_message_stream(db_session: Session, chat_session: models.ChatSession, user_prompt: str):
     """
     This is the definitive, stateful, hybrid router and streamer.
-    It correctly implements all supervisor logic.
+    It correctly implements all supervisor logic with proper agent routing.
     """
     print("--- HYBRID STREAMING SERVICE ---")
 
     try:
+        # Get chat history
         history_messages = []
         db_messages = db_session.query(models.ChatMessage).filter(
             models.ChatMessage.session_id == chat_session.id
         ).order_by(models.ChatMessage.timestamp.asc()).all()
         for msg in db_messages:
-            if msg.role == "human": history_messages.append(HumanMessage(content=msg.content))
-            elif msg.role == "ai": history_messages.append(AIMessage(content=msg.content))
+            if msg.role == "human": 
+                history_messages.append(HumanMessage(content=msg.content))
+            elif msg.role == "ai": 
+                history_messages.append(AIMessage(content=msg.content))
         
         resume_text = chat_session.resume_text
         agent_chain = None
         input_data = {}
 
-        # --- HYBRID SUPERVISOR LOGIC ---
+        # --- SUPERVISOR-BASED AGENT ROUTING ---
         
-        # RULE 1: Python Safety Net for Resume Follow-ups
-        if resume_text:
-            user_input_lower = user_prompt.lower()
-            follow_up_keywords = ["my resume", "my cv", "the document", "my skills", "rewrite", "improve", "experience", "education", "project"]
-            if any(keyword in user_input_lower for keyword in follow_up_keywords):
-                print("--- SERVICE ROUTER: Python rule triggered for ResumeQAAgent. ---")
+        # Use the intelligent supervisor from graph_backend instead of hardcoded routing
+        from langgraph_core.graph_backend import supervisor_node
+        
+        # Create a mock state for the supervisor
+        mock_state = {
+            "messages": history_messages + [HumanMessage(content=user_prompt)],
+            "resume_text": resume_text,
+            "file_data": None
+        }
+        
+        try:
+            # Get supervisor decision
+            supervisor_decision = supervisor_node(mock_state)
+            next_agent = supervisor_decision.get("next", "CareerAdvisor")
+            print(f"--- SUPERVISOR DECISION: Routing to {next_agent} ---")
+            
+            # Route to appropriate agent based on supervisor decision
+            if next_agent == "ResumeQAAgent" and resume_text:
                 agent_chain = create_resume_qa_chain()
                 input_data = {"resume_context": resume_text, "question": user_prompt}
-        
-        # Only run the LLM router if the Python rule didn't fire
-        if agent_chain is None:
-            # RULE 2: Context-Aware LLM Routing
-            history_str = "\n".join([f"{msg.type}: {msg.content}" for msg in history_messages])
-            resume_exists = "Yes" if resume_text else "No"
-        
-            # Simple routing for now - default to CareerAdvisor
+            elif next_agent == "LearningPath":
+                agent_chain = create_learning_path_chain()
+                input_data = {"question": user_prompt, "resume_context": resume_text}
+            elif next_agent == "JobSearch":
+                agent_chain = create_job_search_chain()
+                input_data = {"question": user_prompt, "resume_context": resume_text}
+            elif next_agent == "ResumeAnalyst":
+                # For resume analysis requests, use career advisor as fallback
+                print("--- SUPERVISOR: ResumeAnalyst requested but not implemented in chat. Using CareerAdvisor. ---")
+                agent_chain = create_career_advisor_chain()
+                input_data = {"question": user_prompt, "resume_context": resume_text}
+            else:
+                # Default to Career Advisor for general career guidance
+                agent_chain = create_career_advisor_chain()
+                input_data = {"question": user_prompt, "resume_context": resume_text}
+                
+        except Exception as supervisor_error:
+            print(f"--- SUPERVISOR ERROR: {supervisor_error}. Defaulting to CareerAdvisor. ---")
             agent_chain = create_career_advisor_chain()
             input_data = {"question": user_prompt, "resume_context": resume_text}
 
@@ -96,7 +121,7 @@ def process_user_message_stream(db_session: Session, chat_session: models.ChatSe
             error_message = "I apologize, but I encountered an error while processing your request. Please try again."
             full_ai_response = error_message
             yield error_message
-        
+
         # Create and save both messages at once
         db_ai_message = models.ChatMessage(session_id=chat_session.id, role="ai", content=full_ai_response)
         db_session.add_all([db_user_message, db_ai_message])

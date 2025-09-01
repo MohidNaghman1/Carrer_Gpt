@@ -283,10 +283,16 @@ async def create_new_chat_session_stream(
         db.commit()
         db.refresh(db_session)
         
+        # Ensure the title is properly set in the database
+        if db_session.title != new_title:
+            db_session.title = new_title
+            db.commit()
+            db.refresh(db_session)
+        
         # Get the session data before starting the stream to avoid session issues
         session_info = {
             "id": db_session.id,
-            "title": new_title,  # Use the calculated title
+            "title": db_session.title,  # Use the database title
             "user_id": db_session.user_id,
             "created_at": db_session.created_at.isoformat() if db_session.created_at else None,
             "resume_text": db_session.resume_text,
@@ -346,6 +352,8 @@ async def create_new_chat_session_stream(
                                  chat_session_in_stream.title = new_title
                                  stream_db.commit()
                                  print(f"--- Updated session title to: {new_title} ---")
+                                 # Update session_info with the new title
+                                 session_info["title"] = new_title
                                  
                          except Exception as db_error:
                              print(f"Error getting messages: {db_error}")
