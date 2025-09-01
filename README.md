@@ -275,22 +275,5 @@ npm run lint
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
-## 📝 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- [LangChain](https://langchain.com/) for AI orchestration
-- [Groq](https://groq.com/) for fast LLM inference
-- [FastAPI](https://fastapi.tiangolo.com/) for the backend framework
-- [Next.js](https://nextjs.org/) for the frontend framework
-- [Tailwind CSS](https://tailwindcss.com/) for styling
-
-## 📞 Support
-
-For support, email support@careergpt.com or create an issue in the GitHub repository.
-
----
 
 **Built with ❤️ for career advancement**
