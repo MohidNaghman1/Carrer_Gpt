@@ -107,9 +107,9 @@ async def create_session_with_resume_analysis(
         # 3. Call the service in a threadpool with the correct arguments
         await run_in_threadpool(
             chat_service.process_resume_file, 
+            db_session=db,
             chat_session_id=new_chat_session.id,
-            file_bytes=file_bytes,
-            filename=resume.filename
+            file_content=file_bytes
         )
         
         db.refresh(new_chat_session)
@@ -141,9 +141,9 @@ async def add_resume_analysis_to_session(
 
         await run_in_threadpool(
             chat_service.process_resume_file, 
+            db_session=db,
             chat_session_id=chat_session_obj.id,
-            file_bytes=file_bytes,
-            filename=resume.filename
+            file_content=file_bytes
         )
         
         db.refresh(chat_session_obj)

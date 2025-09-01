@@ -7,8 +7,10 @@ from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from pydantic.v1 import Field, BaseModel
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, AIMessage
 from sqlalchemy.orm import Session
+from langchain_groq import ChatGroq
+from langchain_core.prompts import ChatPromptTemplate
 
 from db import models
 from db.database import SessionLocal
@@ -116,7 +118,6 @@ def _execute_agent_node(agent_name: str, user_prompt: str, resume_text: str) -> 
             
         elif agent_name == "LearningPath":
             print("--- EXECUTING: LearningPath ---")
-
             
             llm_parser = ChatGroq(model="llama-3.1-8b-instant", temperature=0)
             parser_prompt = ChatPromptTemplate.from_template(
@@ -161,7 +162,6 @@ def _execute_agent_node(agent_name: str, user_prompt: str, resume_text: str) -> 
         elif agent_name == "JobSearch":
             print("--- EXECUTING: JobSearch ---")
             # Use LLM parser to extract skills and location from user query
-
             
             class JobSearchParams(BaseModel):
                 skills: str = Field(description="The job title or primary skills the user is looking for.")
@@ -225,8 +225,9 @@ def _execute_agent_node(agent_name: str, user_prompt: str, resume_text: str) -> 
         # Return the result directly (it's already a string)
         print(f"--- AGENT RESULT TYPE: {type(result)} ---")
         print(f"--- AGENT RESULT LENGTH: {len(str(result)) if result else 0} ---")
+        print(f"--- AGENT RESULT PREVIEW: {str(result)[:100] if result else 'None'} ---")
         
-        if result:
+        if result and str(result).strip():
             return str(result)
         else:
             print("--- AGENT RETURNED EMPTY RESULT ---")
@@ -275,7 +276,7 @@ def process_resume_file(db_session: Session, chat_session_id: int, file_content:
             return "Error: Chat session not found."
         
         # Extract text from file
-        resume_text = extract_text_from_file(file_content, "resume.pdf")
+        resume_text = extract_text_from_file(file_content, "resume")
         
         if "Error:" in resume_text:
             print(f"--- RESUME EXTRACTION ERROR: {resume_text} ---")
