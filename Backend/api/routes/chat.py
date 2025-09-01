@@ -105,12 +105,17 @@ async def create_session_with_resume_analysis(
         file_bytes = await resume.read()
         
         # 3. Call the service in a threadpool with the correct arguments
-        await run_in_threadpool(
-            chat_service.process_resume_file, 
-            db_session=db,
-            chat_session_id=new_chat_session.id,
-            file_content=file_bytes
-        )
+        try:
+            await run_in_threadpool(
+                chat_service.process_resume_file, 
+                db_session=db,
+                chat_session_id=new_chat_session.id,
+                file_content=file_bytes
+            )
+        except Exception as service_error:
+            print(f"Service error in resume analysis: {service_error}")
+            # Don't fail the entire request, just log the error
+            # The service will handle the error and return an appropriate message
         
         db.refresh(new_chat_session)
         response = JSONResponse(content=schemas.ChatSession.from_orm(new_chat_session).model_dump(mode='json'))

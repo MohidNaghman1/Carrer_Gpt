@@ -40,6 +40,7 @@ class ChatSession(ChatSessionBase):
     id: int
     user_id: int # We'll fake this for now
     created_at: datetime.datetime
+    resume_text: Optional[str] = None
     messages: List[Message] = []
 
     model_config = {

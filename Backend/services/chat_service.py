@@ -2,7 +2,7 @@ import json
 import re
 import traceback
 from io import BytesIO
-from typing import Generator
+from typing import Generator, Optional
 from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
@@ -72,6 +72,9 @@ def process_user_message_stream(db_session: Session, chat_session: models.ChatSe
         # Save messages to database after streaming is complete
         print("--- SAVING MESSAGES TO DATABASE ---")
         try:
+            # Refresh the chat session to ensure it's still valid
+            db_session.refresh(chat_session)
+            
             # Create and save user message
             user_message = models.ChatMessage(
                 session_id=chat_session.id,
@@ -94,6 +97,7 @@ def process_user_message_stream(db_session: Session, chat_session: models.ChatSe
         except Exception as db_error:
             print(f"--- DATABASE SAVE ERROR: {db_error} ---")
             db_session.rollback()
+            # Don't re-raise the error to avoid breaking the stream
         
     except Exception as e:
         print(f"--- STREAMING ERROR: {e} ---")
@@ -101,7 +105,7 @@ def process_user_message_stream(db_session: Session, chat_session: models.ChatSe
         yield f"I apologize, but I encountered an error: {str(e)}. Please try again."
 
 
-def _execute_agent_node(agent_name: str, user_prompt: str, resume_text: str) -> str:
+def _execute_agent_node(agent_name: str, user_prompt: str, resume_text: Optional[str]) -> str:
     """
     Execute the appropriate agent node and return the response.
     Uses the imported chain creation functions for direct execution.
@@ -188,15 +192,19 @@ def _execute_agent_node(agent_name: str, user_prompt: str, resume_text: str) -> 
                 parsed_params = (parser_prompt | llm_parser).invoke({"request": user_prompt})
                 skills = parsed_params.skills
                 location = parsed_params.location
-            except:
+                print(f"--- JOB SEARCH PARSED: skills='{skills}', location='{location}' ---")
+            except Exception as parse_error:
+                print(f"--- JOB SEARCH PARSE ERROR: {parse_error} ---")
                 skills = "Not specified"
                 location = "Not specified"
             
             agent_chain = create_job_search_chain()
+            print(f"--- JOB SEARCH INPUT: skills='{skills}', location='{location}' ---")
             result = agent_chain.invoke({
                 "skills": skills,
                 "location": location
             })
+            print(f"--- JOB SEARCH RAW RESULT: {result} ---")
             
         elif agent_name == "ResumeAnalyst":
             print("--- EXECUTING: ResumeAnalyst ---")
@@ -216,19 +224,28 @@ def _execute_agent_node(agent_name: str, user_prompt: str, resume_text: str) -> 
         else:
             # Default to CareerAdvisor
             print("--- EXECUTING: CareerAdvisor ---")
-            agent_chain = create_career_advisor_chain()
-            result = agent_chain.invoke({
-                "question": user_prompt,
-                "resume_context": resume_text if resume_text else "No resume provided"
-            })
+            try:
+                agent_chain = create_career_advisor_chain()
+                print(f"--- CAREER ADVISOR INPUT: question='{user_prompt}', resume_context='{resume_text if resume_text else 'No resume provided'}' ---")
+                result = agent_chain.invoke({
+                    "question": user_prompt,
+                    "resume_context": resume_text if resume_text else "No resume provided"
+                })
+                print(f"--- CAREER ADVISOR RAW RESULT: {result} ---")
+            except Exception as chain_error:
+                print(f"--- CAREER ADVISOR CHAIN ERROR: {chain_error} ---")
+                result = "I'm having trouble providing career advice right now. Please try again in a moment."
         
         # Return the result directly (it's already a string)
         print(f"--- AGENT RESULT TYPE: {type(result)} ---")
         print(f"--- AGENT RESULT LENGTH: {len(str(result)) if result else 0} ---")
         print(f"--- AGENT RESULT PREVIEW: {str(result)[:100] if result else 'None'} ---")
+        print(f"--- AGENT RESULT STRIPPED: {str(result).strip() if result else 'None'} ---")
         
         if result and str(result).strip():
-            return str(result)
+            final_result = str(result).strip()
+            print(f"--- RETURNING RESULT: {len(final_result)} characters ---")
+            return final_result
         else:
             print("--- AGENT RETURNED EMPTY RESULT ---")
             return "I apologize, but I couldn't generate a response. Please try again."
@@ -237,7 +254,7 @@ def _execute_agent_node(agent_name: str, user_prompt: str, resume_text: str) -> 
         print(f"--- AGENT EXECUTION ERROR for {agent_name}: {e} ---")
         traceback.print_exc()
         
-        # Fallback response
+        # Fallback response with more specific error information
         if agent_name == "ResumeQAAgent":
             return "I'm having trouble accessing your resume information. Please try again or re-upload your resume."
         elif agent_name == "LearningPath":
@@ -246,6 +263,8 @@ def _execute_agent_node(agent_name: str, user_prompt: str, resume_text: str) -> 
             return "I'm having trouble searching for jobs. Please try specifying the job title and location more clearly."
         elif agent_name == "ResumeAnalyst":
             return "I'm having trouble analyzing your resume. Please try uploading your resume again."
+        elif agent_name == "CareerAdvisor":
+            return "I'm having trouble providing career advice. Please try rephrasing your question."
         else:
             return "I'm having trouble processing your request. Please try again or rephrase your question."
 
@@ -275,17 +294,48 @@ def process_resume_file(db_session: Session, chat_session_id: int, file_content:
         if not chat_session:
             return "Error: Chat session not found."
         
-        # Extract text from file
-        resume_text = extract_text_from_file(file_content, "resume")
+        # Extract text from file - we need to determine file type from content
+        # Try different file types since we don't have the original filename
+        resume_text = None
+        
+        # Try PDF first
+        try:
+            resume_text = extract_text_from_file(file_content, "resume.pdf")
+            if not resume_text.startswith("Error:"):
+                print("--- SUCCESSFULLY EXTRACTED PDF ---")
+            else:
+                resume_text = None
+        except:
+            resume_text = None
+        
+        # Try DOCX if PDF failed
+        if not resume_text or resume_text.startswith("Error:"):
+            try:
+                resume_text = extract_text_from_file(file_content, "resume.docx")
+                if not resume_text.startswith("Error:"):
+                    print("--- SUCCESSFULLY EXTRACTED DOCX ---")
+                else:
+                    resume_text = None
+            except:
+                resume_text = None
+        
+        # If both failed, return error
+        if not resume_text or resume_text.startswith("Error:"):
+            resume_text = "Error: Could not extract text from the uploaded file. Please ensure it's a valid PDF or DOCX file."
         
         if "Error:" in resume_text:
             print(f"--- RESUME EXTRACTION ERROR: {resume_text} ---")
             analysis_string = resume_text
         else:
             print("--- RESUME EXTRACTION SUCCESS ---")
-            # Use the imported resume analyzer chain
-            resume_analyzer_chain = create_resume_analyzer_chain()
-            analysis_string = resume_analyzer_chain.invoke({"resume_text": resume_text})
+            try:
+                # Use the imported resume analyzer chain
+                resume_analyzer_chain = create_resume_analyzer_chain()
+                analysis_string = resume_analyzer_chain.invoke({"resume_text": resume_text})
+                print(f"--- RESUME ANALYSIS COMPLETE: {len(analysis_string)} characters ---")
+            except Exception as chain_error:
+                print(f"--- RESUME ANALYZER CHAIN ERROR: {chain_error} ---")
+                analysis_string = f"Error: Could not analyze the resume. Please try again. Details: {str(chain_error)}"
         
         # Update chat session with resume text
         chat_session.resume_text = resume_text
@@ -304,8 +354,14 @@ def process_resume_file(db_session: Session, chat_session_id: int, file_content:
         )
         
         # Add messages to database
-        db_session.add_all([human_message, ai_message])
-        db_session.commit()
+        try:
+            db_session.add_all([human_message, ai_message])
+            db_session.commit()
+            print("--- RESUME MESSAGES SAVED TO DATABASE ---")
+        except Exception as db_error:
+            print(f"--- DATABASE SAVE ERROR: {db_error} ---")
+            db_session.rollback()
+            # Continue without failing the entire operation
         
         print("--- RESUME PROCESSING COMPLETE ---")
         return analysis_string
