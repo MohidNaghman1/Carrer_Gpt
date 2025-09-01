@@ -270,8 +270,14 @@ async def create_new_chat_session_stream(
 ):
     """Create a new chat session with streaming first message"""
     try:
-        # 1. Create the session
-        new_title = session_data.title or "New Chat"
+        # 1. Create the session with proper title
+        if session_data.first_message:
+            # Create title from first message (first 4 words)
+            first_few_words = " ".join(session_data.first_message.split()[:4])
+            new_title = f"{first_few_words}..." if len(session_data.first_message.split()) > 4 else session_data.first_message
+        else:
+            new_title = session_data.title or "New Chat"
+            
         db_session = models.ChatSession(title=new_title, user_id=current_user.id)
         db.add(db_session)
         db.commit()
@@ -280,7 +286,7 @@ async def create_new_chat_session_stream(
         # Get the session data before starting the stream to avoid session issues
         session_info = {
             "id": db_session.id,
-            "title": db_session.title,
+            "title": new_title,  # Use the calculated title
             "user_id": db_session.user_id,
             "created_at": db_session.created_at.isoformat() if db_session.created_at else None,
             "resume_text": db_session.resume_text,
@@ -324,7 +330,7 @@ async def create_new_chat_session_stream(
                              
                              print(f"--- Found {len(messages)} messages for session {chat_session_in_stream.id} ---")
                              
-                             # Update session info with messages
+                             # Update session info with messages and ensure title is correct
                              session_info["messages"] = [
                                  {
                                      "id": msg.id,
@@ -334,6 +340,13 @@ async def create_new_chat_session_stream(
                                      "timestamp": msg.timestamp.isoformat() if msg.timestamp else None
                                  } for msg in messages
                              ]
+                             
+                             # Ensure the title is updated in the database
+                             if chat_session_in_stream.title != new_title:
+                                 chat_session_in_stream.title = new_title
+                                 stream_db.commit()
+                                 print(f"--- Updated session title to: {new_title} ---")
+                                 
                          except Exception as db_error:
                              print(f"Error getting messages: {db_error}")
                              # Use empty messages if we can't get them

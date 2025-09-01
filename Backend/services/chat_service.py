@@ -72,21 +72,24 @@ def process_user_message_stream(db_session: Session, chat_session: models.ChatSe
         # Stream the AI response
         try:
             for token in agent_chain.stream(input_data):
-                if token:  # Only yield non-empty tokens
+                if token and token.strip():  # Only yield non-empty tokens
                     full_ai_response += token
-                    # Split large tokens into smaller chunks for better streaming
-                    if len(token) > 50:
-                        # Split by words to maintain readability
-                        words = token.split(' ')
+                    # Improved streaming: yield tokens more naturally
+                    # Only split very long tokens (>100 chars) to maintain good streaming
+                    if len(token) > 100:
+                        # Split by sentences or words for very long tokens
+                        import re
+                        sentences = re.split(r'([.!?]+)', token)
                         current_chunk = ""
-                        for word in words:
-                            current_chunk += word + " "
-                            if len(current_chunk) > 30:  # Send chunks of ~30 characters
-                                yield current_chunk.strip()
+                        for sentence in sentences:
+                            current_chunk += sentence
+                            if len(current_chunk) > 80:  # Send chunks of ~80 characters
+                                yield current_chunk
                                 current_chunk = ""
                         if current_chunk.strip():
-                            yield current_chunk.strip()
+                            yield current_chunk
                     else:
+                        # Most tokens are fine as-is for good streaming
                         yield token
         except Exception as stream_error:
             print(f"Error during streaming: {stream_error}")
