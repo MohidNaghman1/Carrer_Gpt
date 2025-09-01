@@ -15,8 +15,8 @@ from sqlalchemy.orm import Session
 from db import models
 from db.database import SessionLocal
 from langgraph_core.utils.file_parser import extract_text_from_file
+from langgraph_core.graph_backend import supervisor_node
 from langgraph_core.agents.chains import (
-    supervisor_node,
     create_career_advisor_chain,
     create_job_search_chain,
     create_learning_path_chain,
