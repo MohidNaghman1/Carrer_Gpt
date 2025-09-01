@@ -3,9 +3,10 @@ from langchain_core.messages import HumanMessage, AIMessage
 from io import BytesIO
 import json
 from db.database import SessionLocal 
-from langgraph_core.utils.text_processing import preprocess_user_input
+
 import re
 from langgraph_core.utils.file_parser import extract_text_from_file 
+
 from langgraph_core.agents.chains import (
     create_career_advisor_chain,
     create_job_search_chain,
@@ -13,13 +14,34 @@ from langgraph_core.agents.chains import (
     create_resume_analyzer_chain,
     create_resume_qa_chain
 )
-from langgraph_core.graph_backend import supervisor_llm, llm_parser
 from db import models
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import StrOutputParser
 
 # This helper function is no longer needed here as the logic is inside the stream function
 # def get_history(...):
+
+# --- SYSTEM ARCHITECTURE OVERVIEW ---
+# 
+# This service integrates with the graph_backend supervisor system:
+# 
+# 1. SUPERVISOR (graph_backend.py): Makes intelligent routing decisions using LLM
+#    - ResumeAnalyst: For analyzing new resume uploads
+#    - ResumeQAAgent: For follow-up questions about uploaded resume
+#    - LearningPath: For personalized learning roadmaps and skill transitions
+#    - JobSearch: For finding actual job listings and opportunities
+#    - CareerAdvisor: For general career guidance (default)
+#    - IRRELEVANT: For non-career related requests
+#    - END: For conversation ending requests
+# 
+# 2. AGENT CHAINS (agents/chains.py): Specialized AI agents with specific prompts
+#    - Each agent has a focused role and specialized prompt
+#    - Agents receive context-appropriate input data
+#    - Responses are streamed for real-time user experience
+# 
+# 3. ROUTING LOGIC: Supervisor decides which agent to use based on:
+#    - User's question content and intent
+#    - Resume context (if uploaded)
+#    - Conversation history
+#    - Relevance to career/tech topics
 
 def process_user_message_stream(db_session: Session, chat_session: models.ChatSession, user_prompt: str):
     """
@@ -46,39 +68,56 @@ def process_user_message_stream(db_session: Session, chat_session: models.ChatSe
 
         # --- SUPERVISOR-BASED AGENT ROUTING ---
         
-        # Use the intelligent supervisor from graph_backend instead of hardcoded routing
+        # Use the actual supervisor node from graph_backend
         from langgraph_core.graph_backend import supervisor_node
         
-        # Create a mock state for the supervisor
-        mock_state = {
+        # Create the proper state format that supervisor expects
+        supervisor_state = {
             "messages": history_messages + [HumanMessage(content=user_prompt)],
             "resume_text": resume_text,
             "file_data": None
         }
         
         try:
-            # Get supervisor decision
-            supervisor_decision = supervisor_node(mock_state)
+            # Get the supervisor's routing decision
+            supervisor_decision = supervisor_node(supervisor_state)
             next_agent = supervisor_decision.get("next", "CareerAdvisor")
             print(f"--- SUPERVISOR DECISION: Routing to {next_agent} ---")
             
-            # Route to appropriate agent based on supervisor decision
+            # Route to the appropriate agent based on supervisor's decision
             if next_agent == "ResumeQAAgent" and resume_text:
+                # ResumeQAAgent: For follow-up questions about uploaded resume
+                print("--- SUPERVISOR: Using ResumeQAAgent for resume follow-up questions ---")
                 agent_chain = create_resume_qa_chain()
                 input_data = {"resume_context": resume_text, "question": user_prompt}
             elif next_agent == "LearningPath":
+                # LearningPath: For personalized learning roadmaps and skill transitions
+                print("--- SUPERVISOR: Using LearningPath Agent for learning roadmaps ---")
                 agent_chain = create_learning_path_chain()
                 input_data = {"question": user_prompt, "resume_context": resume_text}
             elif next_agent == "JobSearch":
+                # JobSearch: For finding actual job listings and opportunities
+                print("--- SUPERVISOR: Using JobSearch Agent for job search ---")
                 agent_chain = create_job_search_chain()
                 input_data = {"question": user_prompt, "resume_context": resume_text}
             elif next_agent == "ResumeAnalyst":
-                # For resume analysis requests, use career advisor as fallback
+                # ResumeAnalyst: For analyzing new resume uploads (not implemented in chat)
                 print("--- SUPERVISOR: ResumeAnalyst requested but not implemented in chat. Using CareerAdvisor. ---")
+                agent_chain = create_resume_analyzer_chain()
+                input_data = {"question": user_prompt, "resume_context": resume_text}
+            elif next_agent == "IRRELEVANT":
+                # IRRELEVANT: For non-career related requests
+                print("--- SUPERVISOR: Irrelevant request detected. Using CareerAdvisor with career focus. ---")
+                agent_chain = create_career_advisor_chain()
+                input_data = {"question": user_prompt, "resume_context": resume_text}
+            elif next_agent == "END":
+                # END: For conversation ending requests
+                print("--- SUPERVISOR: Conversation end detected. Using CareerAdvisor. ---")
                 agent_chain = create_career_advisor_chain()
                 input_data = {"question": user_prompt, "resume_context": resume_text}
             else:
                 # Default to Career Advisor for general career guidance
+                print(f"--- SUPERVISOR: Unknown agent '{next_agent}'. Defaulting to CareerAdvisor. ---")
                 agent_chain = create_career_advisor_chain()
                 input_data = {"question": user_prompt, "resume_context": resume_text}
                 
