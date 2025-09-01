@@ -293,51 +293,59 @@ async def create_new_chat_session_stream(
                 try:
                     print(f"--- Starting stream for first message: {session_data.first_message} ---")
                     
-                    # Create a separate database session for streaming to avoid session closure issues
-                    from db.database import SessionLocal
-                    stream_db = SessionLocal()
-                    try:
-                        # Stream the first message response
-                        for token in chat_service.process_user_message_stream(
-                            db_session=stream_db,
-                            chat_session=db_session,
-                            user_prompt=session_data.first_message
-                        ):
-                            if token and token.strip():
-                                yield f"data: {json.dumps({'token': token})}\n\n"
-                        
-                        print("--- Finished streaming tokens, now sending session data ---")
-                        
-                        # Get messages after streaming is complete
-                        try:
-                            stream_db.refresh(db_session)
-                            messages = stream_db.query(models.ChatMessage).filter(
-                                models.ChatMessage.session_id == db_session.id
-                            ).order_by(models.ChatMessage.timestamp.asc()).all()
-                            
-                            print(f"--- Found {len(messages)} messages for session {db_session.id} ---")
-                            
-                            # Update session info with messages
-                            session_info["messages"] = [
-                                {
-                                    "id": msg.id,
-                                    "session_id": msg.session_id,
-                                    "role": msg.role,
-                                    "content": msg.content,
-                                    "timestamp": msg.timestamp.isoformat() if msg.timestamp else None
-                                } for msg in messages
-                            ]
-                        except Exception as db_error:
-                            print(f"Error getting messages: {db_error}")
-                            # Use empty messages if we can't get them
-                            session_info["messages"] = []
-                        
-                        print(f"--- Sending session data: {session_info} ---")
-                        yield f"data: {json.dumps({'session': session_info})}\n\n"
-                        yield f"data: [DONE]\n\n"
-                        
-                    finally:
-                        stream_db.close()
+                                         # Create a separate database session for streaming to avoid session closure issues
+                     from db.database import SessionLocal
+                     stream_db = SessionLocal()
+                     try:
+                         # Get the chat session in the new session to avoid persistence issues
+                         chat_session_in_stream = stream_db.query(models.ChatSession).filter(
+                             models.ChatSession.id == db_session.id
+                         ).first()
+                         
+                         if not chat_session_in_stream:
+                             raise Exception("Chat session not found in stream database")
+                         
+                         # Stream the first message response
+                         for token in chat_service.process_user_message_stream(
+                             db_session=stream_db,
+                             chat_session=chat_session_in_stream,
+                             user_prompt=session_data.first_message
+                         ):
+                             if token and token.strip():
+                                 yield f"data: {json.dumps({'token': token})}\n\n"
+                         
+                         print("--- Finished streaming tokens, now sending session data ---")
+                         
+                         # Get messages after streaming is complete
+                         try:
+                             stream_db.refresh(chat_session_in_stream)
+                             messages = stream_db.query(models.ChatMessage).filter(
+                                 models.ChatMessage.session_id == chat_session_in_stream.id
+                             ).order_by(models.ChatMessage.timestamp.asc()).all()
+                             
+                             print(f"--- Found {len(messages)} messages for session {chat_session_in_stream.id} ---")
+                             
+                             # Update session info with messages
+                             session_info["messages"] = [
+                                 {
+                                     "id": msg.id,
+                                     "session_id": msg.session_id,
+                                     "role": msg.role,
+                                     "content": msg.content,
+                                     "timestamp": msg.timestamp.isoformat() if msg.timestamp else None
+                                 } for msg in messages
+                             ]
+                         except Exception as db_error:
+                             print(f"Error getting messages: {db_error}")
+                             # Use empty messages if we can't get them
+                             session_info["messages"] = []
+                         
+                         print(f"--- Sending session data: {session_info} ---")
+                         yield f"data: {json.dumps({'session': session_info})}\n\n"
+                         yield f"data: [DONE]\n\n"
+                         
+                     finally:
+                         stream_db.close()
                     
                 except Exception as e:
                     print(f"Error during first message stream: {e}")
