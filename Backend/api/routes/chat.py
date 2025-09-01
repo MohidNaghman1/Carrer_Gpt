@@ -10,7 +10,7 @@ from services import chat_service
 
 # Import models, schemas, and the db session dependency
 from db import models, schemas
-from db.database import get_db
+from db.database import get_db, SessionLocal
 # Import our new dependency
 from api.dependencies import get_current_user
 
@@ -293,10 +293,9 @@ async def create_new_chat_session_stream(
                 try:
                     print(f"--- Starting stream for first message: {session_data.first_message} ---")
                     
-                                         # Create a separate database session for streaming to avoid session closure issues
-                     from db.database import SessionLocal
-                     stream_db = SessionLocal()
-                     try:
+                    # Create a separate database session for streaming to avoid session closure issues
+                    stream_db = SessionLocal()
+                    try:
                          # Get the chat session in the new session to avoid persistence issues
                          chat_session_in_stream = stream_db.query(models.ChatSession).filter(
                              models.ChatSession.id == db_session.id
@@ -344,7 +343,7 @@ async def create_new_chat_session_stream(
                          yield f"data: {json.dumps({'session': session_info})}\n\n"
                          yield f"data: [DONE]\n\n"
                          
-                     finally:
+                    finally:
                          stream_db.close()
                     
                 except Exception as e:
