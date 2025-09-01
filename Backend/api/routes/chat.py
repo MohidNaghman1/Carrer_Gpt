@@ -64,7 +64,8 @@ async def create_new_chat_session(
         # 2. If a first message was provided, process it immediately
         if session_data.first_message:
             try:
-                await run_in_threadpool(
+                # Process the first message and get the response
+                full_response = await run_in_threadpool(
                     chat_service.process_user_message,
                     db_session=db,
                     chat_session=db_session,
@@ -221,19 +222,26 @@ async def post_new_message_stream(
 
         def event_generator():
             try:
+                # Stream the response
                 for token in chat_service.process_user_message_stream(
                     db_session=db,
                     chat_session=db_session,
                     user_prompt=message.content
                 ):
-                    # SSE format: data: {"token": "your token here"}\n\n
-                    yield f"data: {json.dumps({'token': token})}\n\n"
+                    if token and token.strip():  # Only send non-empty tokens
+                        # SSE format: data: {"token": "your token here"}\n\n
+                        yield f"data: {json.dumps({'token': token})}\n\n"
+                
                 # Signal the end of the stream
                 yield f"data: [DONE]\n\n"
+                
             except Exception as e:
                 print(f"Error during stream: {e}")
                 traceback.print_exc()
-                yield f"data: {json.dumps({'error': str(e)})}\n\n"
+                # Send error as a token so frontend can display it
+                error_msg = f"I apologize, but I encountered an error: {str(e)}. Please try again."
+                yield f"data: {json.dumps({'token': error_msg})}\n\n"
+                yield f"data: [DONE]\n\n"
                 
         return StreamingResponse(
             event_generator(), 

@@ -92,7 +92,9 @@ const MessageBubble = React.memo(
       <div
         className={`flex w-full mb-6 ${isAi ? "justify-start" : "justify-end"}`}
       >
-        <div className={`flex max-w-4xl ${isAi ? "flex-row" : "flex-row-reverse"}`}>
+        <div
+          className={`flex max-w-4xl ${isAi ? "flex-row" : "flex-row-reverse"}`}
+        >
           <div className={`flex-shrink-0 ${isAi ? "mr-3" : "ml-3"}`}>
             <div
               className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
@@ -132,7 +134,9 @@ const MessageBubble = React.memo(
                       style={{ animationDelay: "0.2s" }}
                     ></div>
                   </div>
-                  <span className="text-blue-200 text-sm ml-2">Thinking...</span>
+                  <span className="text-blue-200 text-sm ml-2">
+                    Thinking...
+                  </span>
                 </div>
               ) : (
                 <div className="prose prose-sm max-w-none prose-invert">
@@ -428,7 +432,7 @@ export default function ChatSessionPage() {
 
   const handleSendMessage = async (userMessageContent: string) => {
     setIsLoading(true);
-    
+
     const optimisticUserMessage: ChatMessage = {
       id: Date.now(),
       role: "human",
@@ -498,7 +502,7 @@ export default function ChatSessionPage() {
             if (done) break;
 
             buffer += decoder.decode(value, { stream: true });
-            
+
             // Process complete events
             let eventEnd;
             while ((eventEnd = buffer.indexOf("\n\n")) !== -1) {
@@ -512,10 +516,10 @@ export default function ChatSessionPage() {
                   setIsLoading(false);
                   return;
                 }
-                
+
                 try {
                   const data = JSON.parse(dataStr);
-                  if (data.token) {
+                  if (data.token && data.token.trim()) {
                     setMessages((prev) =>
                       prev.map((m) =>
                         m.id === aiMessageId
@@ -525,17 +529,39 @@ export default function ChatSessionPage() {
                     );
                   }
                   if (data.error) {
-                    throw new Error(data.error);
+                    // Handle error by updating the message content
+                    setMessages((prev) =>
+                      prev.map((m) =>
+                        m.id === aiMessageId
+                          ? { ...m, content: `Error: ${data.error}` }
+                          : m
+                      )
+                    );
+                    setStreamingMessageId(null);
+                    setIsLoading(false);
+                    return;
                   }
                 } catch (parseError) {
                   console.error("Failed to parse stream data:", dataStr);
+                  // Continue processing other events
                 }
               }
             }
           }
         } catch (streamError) {
           console.error("Streaming error:", streamError);
-          throw streamError;
+          // Update the message with error content
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === aiMessageId
+                ? {
+                    ...m,
+                    content:
+                      "Sorry, there was an error processing your request. Please try again.",
+                  }
+                : m
+            )
+          );
         } finally {
           setStreamingMessageId(null);
           setIsLoading(false);
