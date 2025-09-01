@@ -19,7 +19,11 @@ class Message(MessageBase):
 
     class Config:
         # This allows Pydantic to work with ORM models later
-        from_attributes = True 
+        from_attributes = True
+        # Add JSON encoders for datetime serialization
+        json_encoders = {
+            datetime.datetime: lambda v: v.isoformat()
+        }
 
 # --- Chat Session Schemas ---
 class ChatSessionBase(BaseModel):
@@ -41,6 +45,10 @@ class ChatSession(ChatSessionBase):
 
     class Config:
         from_attributes = True
+        # Add JSON encoders for datetime serialization
+        json_encoders = {
+            datetime.datetime: lambda v: v.isoformat()
+        }
 
 # --- User & Token Schemas (for later) ---
 # It's good practice to define them now.

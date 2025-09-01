@@ -76,7 +76,7 @@ async def create_new_chat_session(
                 traceback.print_exc()
                 # Don't fail the session creation, just log the error
                 
-        response = JSONResponse(content=schemas.ChatSession.from_orm(db_session).dict())
+        response = JSONResponse(content=schemas.ChatSession.from_orm(db_session).model_dump())
         return add_cors_headers(response, "https://carrer-gpt.vercel.app")
         
     except Exception as e:
@@ -112,7 +112,7 @@ async def create_session_with_resume_analysis(
         )
         
         db.refresh(new_chat_session)
-        response = JSONResponse(content=schemas.ChatSession.from_orm(new_chat_session).dict())
+        response = JSONResponse(content=schemas.ChatSession.from_orm(new_chat_session).model_dump())
         return add_cors_headers(response, "https://carrer-gpt.vercel.app")
         
     except Exception as e:
@@ -146,7 +146,7 @@ async def add_resume_analysis_to_session(
         )
         
         db.refresh(chat_session_obj)
-        response = JSONResponse(content=schemas.ChatSession.from_orm(chat_session_obj).dict())
+        response = JSONResponse(content=schemas.ChatSession.from_orm(chat_session_obj).model_dump())
         return add_cors_headers(response, "https://carrer-gpt.vercel.app")
         
     except Exception as e:
@@ -166,7 +166,7 @@ async def get_all_user_sessions(
         sessions = db.query(models.ChatSession).filter(
             models.ChatSession.user_id == current_user.id
         ).all()
-        response = JSONResponse(content=[schemas.ChatSession.from_orm(s).dict() for s in sessions])
+        response = JSONResponse(content=[schemas.ChatSession.from_orm(s).model_dump() for s in sessions])
         return add_cors_headers(response, "https://carrer-gpt.vercel.app")
     except Exception as e:
         print(f"Error fetching sessions: {e}")
@@ -193,7 +193,7 @@ async def get_chat_session(
         if db_session.user_id != current_user.id:
             raise HTTPException(status_code=403, detail="Not authorized to access this session")
 
-        response = JSONResponse(content=schemas.ChatSession.from_orm(db_session).dict())
+        response = JSONResponse(content=schemas.ChatSession.from_orm(db_session).model_dump())
         return add_cors_headers(response, "https://carrer-gpt.vercel.app")
         
     except HTTPException:
@@ -273,7 +273,7 @@ async def update_chat_session(
         db.commit()
         db.refresh(db_session)
         
-        response = JSONResponse(content=schemas.ChatSession.from_orm(db_session).dict())
+        response = JSONResponse(content=schemas.ChatSession.from_orm(db_session).model_dump())
         return add_cors_headers(response, "https://carrer-gpt.vercel.app")
         
     except HTTPException:
