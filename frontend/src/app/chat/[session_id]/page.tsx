@@ -520,7 +520,15 @@ export default function ChatSessionPage() {
                     );
                   }
                   if (data.session) {
-                    newSession = data.session;
+                    try {
+                      newSession = data.session;
+                      console.log("Received session data:", newSession);
+                    } catch (sessionError) {
+                      console.error(
+                        "Error processing session data:",
+                        sessionError
+                      );
+                    }
                   }
                   if (data.error) {
                     throw new Error(data.error);

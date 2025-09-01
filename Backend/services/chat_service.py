@@ -65,10 +65,9 @@ def process_user_message_stream(db_session: Session, chat_session: models.ChatSe
         # --- STREAM FROM THE CHOSEN AGENT AND SAVE TO DB ---
         full_ai_response = ""
         
-        # First, save the user message
+        # Prepare messages to save (we'll save them all at once at the end)
         db_user_message = models.ChatMessage(session_id=chat_session.id, role="human", content=user_prompt)
-        db_session.add(db_user_message)
-        db_session.commit()
+        db_ai_message = None  # Will be created after streaming
         
         # Stream the AI response
         try:
@@ -95,9 +94,9 @@ def process_user_message_stream(db_session: Session, chat_session: models.ChatSe
             full_ai_response = error_message
             yield error_message
         
-        # Save the AI response
+        # Create and save both messages at once
         db_ai_message = models.ChatMessage(session_id=chat_session.id, role="ai", content=full_ai_response)
-        db_session.add(db_ai_message)
+        db_session.add_all([db_user_message, db_ai_message])
         db_session.commit()
         
     except Exception as e:
