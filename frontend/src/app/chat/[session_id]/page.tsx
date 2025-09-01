@@ -447,16 +447,107 @@ export default function ChatSessionPage() {
 
       // --- Case 1: This is the VERY FIRST message of a NEW chat ---
       if (isNewChat) {
-        const response = await apiClient.post("/chat/", {
-          first_message: userMessageContent,
-        });
-        const newSession: ChatSession = response.data;
-        currentSessionId = newSession.id.toString();
+        const token = localStorage.getItem("accessToken");
+        const url = `${apiClient.defaults.baseURL}/chat/stream`;
 
-        router.replace(`/chat/${currentSessionId}`, { scroll: false });
-        setSession(newSession);
-        setMessages(newSession.messages || []);
-        setIsLoading(false);
+        const response = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "text/event-stream",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ first_message: userMessageContent }),
+        });
+
+        if (!response.ok || !response.body) {
+          throw new Error("Stream request failed.");
+        }
+
+        // Create AI message placeholder
+        const aiMessageId = Date.now() + 1;
+        const aiPlaceholder: ChatMessage = {
+          id: aiMessageId,
+          role: "ai",
+          content: "",
+          session_id: 0, // Will be updated when we get session info
+          timestamp: new Date().toISOString(),
+        };
+        setMessages((prev) => [...prev, aiPlaceholder]);
+        setStreamingMessageId(aiMessageId);
+
+        // Stream the response
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let newSession: ChatSession | null = null;
+
+        try {
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+
+            // Process complete events
+            let eventEnd;
+            while ((eventEnd = buffer.indexOf("\n\n")) !== -1) {
+              const event = buffer.slice(0, eventEnd).trim();
+              buffer = buffer.slice(eventEnd + 2);
+
+              if (event.startsWith("data: ")) {
+                const dataStr = event.slice(6);
+                if (dataStr.trim() === "[DONE]") {
+                  setStreamingMessageId(null);
+                  setIsLoading(false);
+                  if (newSession) {
+                    router.replace(`/chat/${newSession.id}`, { scroll: false });
+                    setSession(newSession);
+                    setMessages(newSession.messages || []);
+                  }
+                  return;
+                }
+
+                try {
+                  const data = JSON.parse(dataStr);
+                  if (data.token && data.token.trim()) {
+                    setMessages((prev) =>
+                      prev.map((m) =>
+                        m.id === aiMessageId
+                          ? { ...m, content: m.content + data.token }
+                          : m
+                      )
+                    );
+                  }
+                  if (data.session) {
+                    newSession = data.session;
+                  }
+                  if (data.error) {
+                    throw new Error(data.error);
+                  }
+                } catch (parseError) {
+                  console.error("Failed to parse stream data:", dataStr);
+                }
+              }
+            }
+          }
+        } catch (streamError) {
+          console.error("Streaming error:", streamError);
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === aiMessageId
+                ? {
+                    ...m,
+                    content:
+                      "Sorry, there was an error processing your request. Please try again.",
+                  }
+                : m
+            )
+          );
+        } finally {
+          setStreamingMessageId(null);
+          setIsLoading(false);
+        }
         return;
       }
 

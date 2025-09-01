@@ -262,6 +262,67 @@ async def post_new_message_stream(
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Streaming failed: {str(e)}")
 
+@router.post("/stream")
+async def create_new_chat_session_stream(
+    session_data: schemas.ChatSessionCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """Create a new chat session with streaming first message"""
+    try:
+        # 1. Create the session
+        new_title = session_data.title or "New Chat"
+        db_session = models.ChatSession(title=new_title, user_id=current_user.id)
+        db.add(db_session)
+        db.commit()
+        db.refresh(db_session)
+
+        # 2. If a first message was provided, stream it
+        if session_data.first_message:
+            def event_generator():
+                try:
+                    # Stream the first message response
+                    for token in chat_service.process_user_message_stream(
+                        db_session=db,
+                        chat_session=db_session,
+                        user_prompt=session_data.first_message
+                    ):
+                        if token and token.strip():
+                            yield f"data: {json.dumps({'token': token})}\n\n"
+                    
+                    # Send session info at the end
+                    yield f"data: {json.dumps({'session': schemas.ChatSession.from_orm(db_session).model_dump(mode='json')})}\n\n"
+                    yield f"data: [DONE]\n\n"
+                    
+                except Exception as e:
+                    print(f"Error during first message stream: {e}")
+                    traceback.print_exc()
+                    error_msg = f"I apologize, but I encountered an error: {str(e)}. Please try again."
+                    yield f"data: {json.dumps({'token': error_msg})}\n\n"
+                    yield f"data: [DONE]\n\n"
+            
+            return StreamingResponse(
+                event_generator(), 
+                media_type="text/event-stream",
+                headers={
+                    "Access-Control-Allow-Origin": "https://carrer-gpt.vercel.app",
+                    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+                    "Access-Control-Allow-Headers": "*",
+                    "Access-Control-Allow-Credentials": "true",
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                }
+            )
+        else:
+            # No first message, just return the session
+            response = JSONResponse(content=schemas.ChatSession.from_orm(db_session).model_dump(mode='json'))
+            return add_cors_headers(response, "https://carrer-gpt.vercel.app")
+        
+    except Exception as e:
+        print(f"Error creating streaming session: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to create session: {str(e)}")
+
 @router.put("/{session_id}", response_model=schemas.ChatSession)
 async def update_chat_session(
     session_id: int,
