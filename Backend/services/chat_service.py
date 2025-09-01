@@ -55,7 +55,7 @@ def process_user_message_stream(db_session: Session, chat_session: models.ChatSe
         # Use supervisor to determine next agent
         print("--- CONSULTING SUPERVISOR ---")
         supervisor_result = supervisor_node(agent_state)
-        next_agent = supervisor_result.get("next_agent", "CareerAdvisor")
+        next_agent = supervisor_result.get("next", "CareerAdvisor")
         print(f"--- SUPERVISOR DECISION: {next_agent} ---")
         
         # Execute the chosen agent and stream response
@@ -68,6 +68,32 @@ def process_user_message_stream(db_session: Session, chat_session: models.ChatSe
             yield char
         
         print("--- STREAM COMPLETE ---")
+        
+        # Save messages to database after streaming is complete
+        print("--- SAVING MESSAGES TO DATABASE ---")
+        try:
+            # Create and save user message
+            user_message = models.ChatMessage(
+                session_id=chat_session.id,
+                role="human",
+                content=user_prompt
+            )
+            
+            # Create and save AI message
+            ai_message = models.ChatMessage(
+                session_id=chat_session.id,
+                role="ai",
+                content=agent_response
+            )
+            
+            # Add messages to database
+            db_session.add_all([user_message, ai_message])
+            db_session.commit()
+            print("--- MESSAGES SAVED TO DATABASE ---")
+            
+        except Exception as db_error:
+            print(f"--- DATABASE SAVE ERROR: {db_error} ---")
+            db_session.rollback()
         
     except Exception as e:
         print(f"--- STREAMING ERROR: {e} ---")
@@ -93,7 +119,9 @@ def _execute_agent_node(agent_name: str, user_prompt: str, resume_text: str) -> 
         elif agent_name == "LearningPath":
             print("--- EXECUTING: LearningPath ---")
             # Use LLM parser to extract current_skills and goal_role from user query
-          
+            from langchain_groq import ChatGroq
+            from langchain_core.prompts import ChatPromptTemplate
+            from langchain_core.output_parsers import StrOutputParser
             
             llm_parser = ChatGroq(model="llama-3.1-8b-instant", temperature=0)
             parser_prompt = ChatPromptTemplate.from_template(
