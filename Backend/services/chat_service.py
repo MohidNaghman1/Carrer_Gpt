@@ -1,205 +1,342 @@
-from sqlalchemy.orm import Session
-from langchain_core.messages import HumanMessage, AIMessage
-from io import BytesIO
+# Backend/services/chat_service.py
+
 import json
-from db.database import SessionLocal 
-
 import re
-from langgraph_core.utils.file_parser import extract_text_from_file 
+import traceback
+from io import BytesIO
+from typing import Generator
+from langchain_groq import ChatGroq
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+from pydantic.v1 import Field, BaseModel
+from langchain_core.messages import HumanMessage, AIMessage
+from sqlalchemy.orm import Session
 
+from db import models
+from db.database import SessionLocal
+from langgraph_core.utils.file_parser import extract_text_from_file
 from langgraph_core.agents.chains import (
+    supervisor_node,
     create_career_advisor_chain,
     create_job_search_chain,
     create_learning_path_chain,
     create_resume_analyzer_chain,
     create_resume_qa_chain
 )
-from db import models
-
-# This helper function is no longer needed here as the logic is inside the stream function
-# def get_history(...):
 
 # --- SYSTEM ARCHITECTURE OVERVIEW ---
-# 
-# This service integrates with the graph_backend supervisor system:
-# 
-# 1. SUPERVISOR (graph_backend.py): Makes intelligent routing decisions using LLM
-#    - ResumeAnalyst: For analyzing new resume uploads
-#    - ResumeQAAgent: For follow-up questions about uploaded resume
-#    - LearningPath: For personalized learning roadmaps and skill transitions
-#    - JobSearch: For finding actual job listings and opportunities
-#    - CareerAdvisor: For general career guidance (default)
-#    - IRRELEVANT: For non-career related requests
-#    - END: For conversation ending requests
-# 
-# 2. AGENT CHAINS (agents/chains.py): Specialized AI agents with specific prompts
-#    - Each agent has a focused role and specialized prompt
-#    - Agents receive context-appropriate input data
-#    - Responses are streamed for real-time user experience
-# 
-# 3. ROUTING LOGIC: Supervisor decides which agent to use based on:
-#    - User's question content and intent
-#    - Resume context (if uploaded)
-#    - Conversation history
-#    - Relevance to career/tech topics
+# This service handles all chat interactions with intelligent agent routing
+# 1. Uses supervisor_node from graph_backend.py for intelligent routing
+# 2. Executes appropriate agent chains based on routing decision
+# 3. Streams responses character by character for real-time display
+# 4. Manages database operations for chat history and resume storage
+# 5. Handles file uploads and resume analysis
+# ---
 
-def process_user_message_stream(db_session: Session, chat_session: models.ChatSession, user_prompt: str):
-    """
-    This is the definitive, stateful, hybrid router and streamer.
-    It correctly implements all supervisor logic with proper agent routing.
-    """
-    print("--- HYBRID STREAMING SERVICE ---")
 
+def process_user_message_stream(db_session: Session, chat_session: models.ChatSession, user_prompt: str) -> Generator[str, None, None]:
+    """
+    Main streaming function that routes user messages and streams AI responses.
+    Uses the supervisor_node from graph_backend.py for intelligent routing.
+    """
     try:
-        # Get chat history
-        history_messages = []
-        db_messages = db_session.query(models.ChatMessage).filter(
-            models.ChatMessage.session_id == chat_session.id
-        ).order_by(models.ChatMessage.timestamp.asc()).all()
-        for msg in db_messages:
-            if msg.role == "human": 
-                history_messages.append(HumanMessage(content=msg.content))
-            elif msg.role == "ai": 
-                history_messages.append(AIMessage(content=msg.content))
+        print(f"--- PROCESSING USER MESSAGE: {user_prompt[:50]}... ---")
         
+        # Get resume text from chat session
         resume_text = chat_session.resume_text
-        agent_chain = None
-        input_data = {}
-
-        # --- SUPERVISOR-BASED AGENT ROUTING ---
         
-        # Use the actual supervisor node from graph_backend
-        from langgraph_core.graph_backend import supervisor_node
-        
-        # Create the proper state format that supervisor expects
-        supervisor_state = {
-            "messages": history_messages + [HumanMessage(content=user_prompt)],
+        # Create agent state for supervisor
+        agent_state = {
+            "messages": [HumanMessage(content=user_prompt)],
             "resume_text": resume_text,
             "file_data": None
         }
         
-        try:
-            # Get the supervisor's routing decision
-            supervisor_decision = supervisor_node(supervisor_state)
-            next_agent = supervisor_decision.get("next", "CareerAdvisor")
-            print(f"--- SUPERVISOR DECISION: Routing to {next_agent} ---")
-            
-            # Route to the appropriate agent based on supervisor's decision
-            if next_agent == "ResumeQAAgent" and resume_text:
-                # ResumeQAAgent: For follow-up questions about uploaded resume
-                print("--- SUPERVISOR: Using ResumeQAAgent for resume follow-up questions ---")
-                agent_chain = create_resume_qa_chain()
-                input_data = {"resume_context": resume_text, "question": user_prompt}
-            elif next_agent == "LearningPath":
-                # LearningPath: For personalized learning roadmaps and skill transitions
-                print("--- SUPERVISOR: Using LearningPath Agent for learning roadmaps ---")
-                agent_chain = create_learning_path_chain()
-                input_data = {"question": user_prompt, "resume_context": resume_text}
-            elif next_agent == "JobSearch":
-                # JobSearch: For finding actual job listings and opportunities
-                print("--- SUPERVISOR: Using JobSearch Agent for job search ---")
-                agent_chain = create_job_search_chain()
-                input_data = {"question": user_prompt, "resume_context": resume_text}
-            elif next_agent == "ResumeAnalyst":
-                # ResumeAnalyst: For analyzing new resume uploads (not implemented in chat)
-                print("--- SUPERVISOR: ResumeAnalyst requested but not implemented in chat. Using CareerAdvisor. ---")
-                agent_chain = create_resume_analyzer_chain()
-                input_data = {"question": user_prompt, "resume_context": resume_text}
-            elif next_agent == "IRRELEVANT":
-                # IRRELEVANT: For non-career related requests
-                print("--- SUPERVISOR: Irrelevant request detected. Using CareerAdvisor with career focus. ---")
-                agent_chain = create_career_advisor_chain()
-                input_data = {"question": user_prompt, "resume_context": resume_text}
-            elif next_agent == "END":
-                # END: For conversation ending requests
-                print("--- SUPERVISOR: Conversation end detected. Using CareerAdvisor. ---")
-                agent_chain = create_career_advisor_chain()
-                input_data = {"question": user_prompt, "resume_context": resume_text}
-            else:
-                # Default to Career Advisor for general career guidance
-                print(f"--- SUPERVISOR: Unknown agent '{next_agent}'. Defaulting to CareerAdvisor. ---")
-                agent_chain = create_career_advisor_chain()
-                input_data = {"question": user_prompt, "resume_context": resume_text}
-                
-        except Exception as supervisor_error:
-            print(f"--- SUPERVISOR ERROR: {supervisor_error}. Defaulting to CareerAdvisor. ---")
-            agent_chain = create_career_advisor_chain()
-            input_data = {"question": user_prompt, "resume_context": resume_text}
-
-        # --- STREAM FROM THE CHOSEN AGENT AND SAVE TO DB ---
-        full_ai_response = ""
+        # Use supervisor to determine next agent
+        print("--- CONSULTING SUPERVISOR ---")
+        supervisor_result = supervisor_node(agent_state)
+        next_agent = supervisor_result.get("next_agent", "CareerAdvisor")
+        print(f"--- SUPERVISOR DECISION: {next_agent} ---")
         
-        # Prepare messages to save (we'll save them all at once at the end)
-        db_user_message = models.ChatMessage(session_id=chat_session.id, role="human", content=user_prompt)
-        db_ai_message = None  # Will be created after streaming
+        # Execute the chosen agent and stream response
+        print(f"--- EXECUTING AGENT: {next_agent} ---")
+        agent_response = _execute_agent_node(next_agent, user_prompt, resume_text)
         
-        # Stream the AI response
-        try:
-            for token in agent_chain.stream(input_data):
-                if token and token.strip():  # Only yield non-empty tokens
-                    full_ai_response += token
-                    # Improved streaming: yield tokens more naturally
-                    # Only split very long tokens (>100 chars) to maintain good streaming
-                    if len(token) > 100:
-                        # Split by sentences or words for very long tokens
-                        import re
-                        sentences = re.split(r'([.!?]+)', token)
-                        current_chunk = ""
-                        for sentence in sentences:
-                            current_chunk += sentence
-                            if len(current_chunk) > 80:  # Send chunks of ~80 characters
-                                yield current_chunk
-                                current_chunk = ""
-                        if current_chunk.strip():
-                            yield current_chunk
-                    else:
-                        # Most tokens are fine as-is for good streaming
-                        yield token
-        except Exception as stream_error:
-            print(f"Error during streaming: {stream_error}")
-            error_message = "I apologize, but I encountered an error while processing your request. Please try again."
-            full_ai_response = error_message
-            yield error_message
-
-        # Create and save both messages at once
-        db_ai_message = models.ChatMessage(session_id=chat_session.id, role="ai", content=full_ai_response)
-        db_session.add_all([db_user_message, db_ai_message])
-        db_session.commit()
+        # Stream the response character by character
+        print("--- STARTING STREAM ---")
+        for char in agent_response:
+            yield char
+        
+        print("--- STREAM COMPLETE ---")
         
     except Exception as e:
-        print(f"Error in process_user_message_stream: {e}")
-        import traceback
+        print(f"--- STREAMING ERROR: {e} ---")
         traceback.print_exc()
-        # Yield error message to user
         yield f"I apologize, but I encountered an error: {str(e)}. Please try again."
 
-# The NON-streaming function for the first message and resume analysis
+
+def _execute_agent_node(agent_name: str, user_prompt: str, resume_text: str) -> str:
+    """
+    Execute the appropriate agent node and return the response.
+    Uses the imported chain creation functions for direct execution.
+    """
+    try:
+        # Route to appropriate agent chain
+        if agent_name == "ResumeQAAgent" and resume_text:
+            print("--- EXECUTING: ResumeQAAgent ---")
+            agent_chain = create_resume_qa_chain()
+            result = agent_chain.invoke({
+                "resume_context": resume_text,
+                "question": user_prompt
+            })
+            
+        elif agent_name == "LearningPath":
+            print("--- EXECUTING: LearningPath ---")
+            # Use LLM parser to extract current_skills and goal_role from user query
+          
+            
+            llm_parser = ChatGroq(model="llama-3.1-8b-instant", temperature=0)
+            parser_prompt = ChatPromptTemplate.from_template(
+                """You are a highly efficient text-to-JSON converter. Your ONLY job is to extract information from the user's request and format it as a single, valid JSON object.
+                You MUST respond with ONLY the JSON object and nothing else. Do not add any conversational text, introductions, or Markdown formatting.
+
+                The JSON schema you must adhere to is:
+                {{"current_skills": "a comma-separated list of skills", "goal_role": "the user's desired job role"}}
+
+                - If no skills are mentioned, use "Not specified" for the current_skills value.
+                - If no goal role is mentioned, use "Not specified" for the goal_role value.
+
+                User Request: "{request}"
+
+                Your JSON Response:
+                """
+            )
+            
+            parser_chain = parser_prompt | llm_parser | StrOutputParser()
+            
+            try:
+                raw_response = parser_chain.invoke({"request": user_prompt})
+                match = re.search(r"\{.*\}", raw_response, re.DOTALL)
+                if match:
+                    json_string = match.group(0)
+                    parsed_args = json.loads(json_string)
+                    current_skills = parsed_args.get("current_skills", "Not specified")
+                    goal_role = parsed_args.get("goal_role", "Not specified")
+                else:
+                    current_skills = "Not specified"
+                    goal_role = "Not specified"
+            except:
+                current_skills = "Not specified"
+                goal_role = "Not specified"
+            
+            agent_chain = create_learning_path_chain()
+            result = agent_chain.invoke({
+                "current_skills": current_skills,
+                "goal_role": goal_role
+            })
+            
+        elif agent_name == "JobSearch":
+            print("--- EXECUTING: JobSearch ---")
+            
+            class JobSearchParams(BaseModel):
+                skills: str = Field(description="The job title or primary skills the user is looking for.")
+                location: str = Field(description="The geographic location the user wants to search in. Default to 'Not specified' if none is mentioned.")
+            
+            llm_parser = ChatGroq(model="llama-3.1-8b-instant", temperature=0).with_structured_output(JobSearchParams)
+            
+            parser_prompt = ChatPromptTemplate.from_messages([
+                ("system",
+                 "You are a data extraction specialist. Your only job is to analyze the user's request and extract the 'skills' (job title) and 'location' into a JSON object that matches the `JobSearchParams` schema. Follow the examples precisely.\n\n"
+                 "--- EXAMPLES ---\n"
+                 "User Request: 'find me AI Engineer jobs in Pakistan'\n"
+                 "Your JSON Response: {{\"skills\": \"AI Engineer\", \"location\": \"Pakistan\"}}\n\n"
+                 "User Request: 'remote software developer positions'\n"
+                 "Your JSON Response: {{\"skills\": \"software developer\", \"location\": \"Remote\"}}\n\n"
+                 "User Request: 'what are some data science jobs?'\n"
+                 "Your JSON Response: {{\"skills\": \"data science\", \"location\": \"Not specified\"}}\n"
+                 "--- END EXAMPLES ---"
+                ),
+                ("user", "User Request: \"{request}\"")
+            ])
+            
+            try:
+                parsed_params = (parser_prompt | llm_parser).invoke({"request": user_prompt})
+                skills = parsed_params.skills
+                location = parsed_params.location
+            except:
+                skills = "Not specified"
+                location = "Not specified"
+            
+            agent_chain = create_job_search_chain()
+            result = agent_chain.invoke({
+                "skills": skills,
+                "location": location
+            })
+            
+        elif agent_name == "ResumeAnalyst":
+            print("--- EXECUTING: ResumeAnalyst ---")
+            agent_chain = create_resume_analyzer_chain()
+            result = agent_chain.invoke({
+                "resume_text": resume_text if resume_text else "No resume provided"
+            })
+            
+        else:
+            # Default to CareerAdvisor
+            print("--- EXECUTING: CareerAdvisor ---")
+            agent_chain = create_career_advisor_chain()
+            result = agent_chain.invoke({
+                "question": user_prompt,
+                "resume_context": resume_text
+            })
+        
+        # Return the result directly (it's already a string)
+        return str(result) if result else "I apologize, but I couldn't generate a response. Please try again."
+            
+    except Exception as e:
+        print(f"--- AGENT EXECUTION ERROR for {agent_name}: {e} ---")
+        traceback.print_exc()
+        
+        # Fallback response
+        if agent_name == "ResumeQAAgent":
+            return "I'm having trouble accessing your resume information. Please try again or re-upload your resume."
+        elif agent_name == "LearningPath":
+            return "I'm having trouble creating a learning path. Please try rephrasing your request with your current skills and desired role."
+        elif agent_name == "JobSearch":
+            return "I'm having trouble searching for jobs. Please try specifying the job title and location more clearly."
+        elif agent_name == "ResumeAnalyst":
+            return "I'm having trouble analyzing your resume. Please try uploading your resume again."
+        else:
+            return "I'm having trouble processing your request. Please try again or rephrase your question."
+
+
 def process_user_message(db_session: Session, chat_session: models.ChatSession, user_prompt: str) -> str:
+    """
+    Non-streaming version for compatibility.
+    """
     full_response = ""
-    # Collect the full response from the generator
     for token in process_user_message_stream(db_session, chat_session, user_prompt):
         full_response += token
     return full_response
 
-# The thread-safe resume processing function
-def process_resume_file(chat_session_id: int, file_bytes: bytes, filename: str):
-    db: Session = SessionLocal()
+
+def process_resume_file(db_session: Session, chat_session_id: int, file_content: bytes) -> str:
+    """
+    Process uploaded resume file and return analysis.
+    """
     try:
-        chat_session = db.query(models.ChatSession).filter(models.ChatSession.id == chat_session_id).first()
-        if not chat_session: return
-
-        resume_analyzer_agent = create_resume_analyzer_chain()
-        resume_text = extract_text_from_file(file_bytes, filename)
-
+        print(f"--- PROCESSING RESUME FILE ---")
+        
+        # Get chat session
+        chat_session = db_session.query(models.ChatSession).filter(
+            models.ChatSession.id == chat_session_id
+        ).first()
+        
+        if not chat_session:
+            return "Error: Chat session not found."
+        
+        # Extract text from file
+        resume_text = extract_text_from_file(file_content, "resume.pdf")
+        
         if "Error:" in resume_text:
+            print(f"--- RESUME EXTRACTION ERROR: {resume_text} ---")
             analysis_string = resume_text
         else:
-            analysis_string = resume_analyzer_agent.invoke({"resume_text": resume_text})
-
+            print("--- RESUME EXTRACTION SUCCESS ---")
+            # Use the imported resume analyzer chain
+            resume_analyzer_chain = create_resume_analyzer_chain()
+            analysis_string = resume_analyzer_chain.invoke({"resume_text": resume_text})
+        
+        # Update chat session with resume text
         chat_session.resume_text = resume_text
-        db_human_message = models.ChatMessage(session_id=chat_session.id, role="human", content=f"Analyzed resume: {filename}")
-        db_ai_message = models.ChatMessage(session_id=chat_session.id, role="ai", content=analysis_string)
-        db.add_all([db_human_message, db_ai_message])
-        db.commit()
-    finally:
-        db.close()
+        
+        # Create messages for the database
+        human_message = models.ChatMessage(
+            session_id=chat_session_id,
+            role="human",
+            content="Uploaded resume for analysis"
+        )
+        
+        ai_message = models.ChatMessage(
+            session_id=chat_session_id,
+            role="ai",
+            content=analysis_string
+        )
+        
+        # Add messages to database
+        db_session.add_all([human_message, ai_message])
+        db_session.commit()
+        
+        print("--- RESUME PROCESSING COMPLETE ---")
+        return analysis_string
+        
+    except Exception as e:
+        print(f"--- RESUME PROCESSING ERROR: {e} ---")
+        traceback.print_exc()
+        return f"Error processing resume: {str(e)}"
+
+
+def get_chat_history(db_session: Session, session_id: int) -> list[models.ChatMessage]:
+    """
+    Get chat history for a session.
+    """
+    try:
+        messages = db_session.query(models.ChatMessage).filter(
+            models.ChatMessage.session_id == session_id
+        ).order_by(models.ChatMessage.timestamp.asc()).all()
+        
+        return messages
+        
+    except Exception as e:
+        print(f"--- CHAT HISTORY ERROR: {e} ---")
+        traceback.print_exc()
+        return []
+
+
+def create_chat_session(db_session: Session, user_id: int, title: str = None, first_message: str = None) -> models.ChatSession:
+    """
+    Create a new chat session.
+    """
+    try:
+        # Generate title from first message if not provided
+        if not title and first_message:
+            words = first_message.split()[:4]
+            title = " ".join(words) + "..." if len(first_message.split()) > 4 else first_message
+        
+        # Create new chat session
+        new_session = models.ChatSession(
+            user_id=user_id,
+            title=title or "New Chat Session"
+        )
+        
+        db_session.add(new_session)
+        db_session.commit()
+        db_session.refresh(new_session)
+        
+        print(f"--- CREATED CHAT SESSION: {new_session.id} ---")
+        return new_session
+        
+    except Exception as e:
+        print(f"--- CREATE SESSION ERROR: {e} ---")
+        traceback.print_exc()
+        db_session.rollback()
+        raise
+
+
+def update_chat_session_title(db_session: Session, session_id: int, new_title: str):
+    """
+    Update chat session title.
+    """
+    try:
+        chat_session = db_session.query(models.ChatSession).filter(
+            models.ChatSession.id == session_id
+        ).first()
+        
+        if chat_session:
+            chat_session.title = new_title
+            db_session.commit()
+            print(f"--- UPDATED SESSION TITLE: {new_title} ---")
+        
+    except Exception as e:
+        print(f"--- UPDATE TITLE ERROR: {e} ---")
+        traceback.print_exc()
+        db_session.rollback()
