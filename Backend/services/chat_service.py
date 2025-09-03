@@ -40,8 +40,6 @@ def process_user_message_stream(db_session: Session, chat_session: models.ChatSe
     Uses the supervisor_node from graph_backend.py for intelligent routing.
     """
     try:
-        print(f"--- PROCESSING USER MESSAGE: {user_prompt[:50]}... ---")
-        
         # Get resume text from chat session
         resume_text = chat_session.resume_text
         
@@ -63,14 +61,10 @@ def process_user_message_stream(db_session: Session, chat_session: models.ChatSe
         agent_response = _execute_agent_node(next_agent, user_prompt, resume_text)
         
         # Stream the response character by character
-        print("--- STARTING STREAM ---")
         for char in agent_response:
             yield char
         
-        print("--- STREAM COMPLETE ---")
-        
         # Save messages to database after streaming is complete
-        print("--- SAVING MESSAGES TO DATABASE ---")
         try:
             # Refresh the chat session to ensure it's still valid
             db_session.refresh(chat_session)
@@ -92,16 +86,12 @@ def process_user_message_stream(db_session: Session, chat_session: models.ChatSe
             # Add messages to database
             db_session.add_all([user_message, ai_message])
             db_session.commit()
-            print("--- MESSAGES SAVED TO DATABASE ---")
             
         except Exception as db_error:
-            print(f"--- DATABASE SAVE ERROR: {db_error} ---")
             db_session.rollback()
             # Don't re-raise the error to avoid breaking the stream
         
     except Exception as e:
-        print(f"--- STREAMING ERROR: {e} ---")
-        traceback.print_exc()
         yield f"I apologize, but I encountered an error: {str(e)}. Please try again."
 
 
@@ -192,19 +182,15 @@ def _execute_agent_node(agent_name: str, user_prompt: str, resume_text: Optional
                 parsed_params = (parser_prompt | llm_parser).invoke({"request": user_prompt})
                 skills = parsed_params.skills
                 location = parsed_params.location
-                print(f"--- JOB SEARCH PARSED: skills='{skills}', location='{location}' ---")
             except Exception as parse_error:
-                print(f"--- JOB SEARCH PARSE ERROR: {parse_error} ---")
                 skills = "Not specified"
                 location = "Not specified"
             
             agent_chain = create_job_search_chain()
-            print(f"--- JOB SEARCH INPUT: skills='{skills}', location='{location}' ---")
             result = agent_chain.invoke({
                 "skills": skills,
                 "location": location
             })
-            print(f"--- JOB SEARCH RAW RESULT: {result} ---")
             
         elif agent_name == "ResumeAnalyst":
             print("--- EXECUTING: ResumeAnalyst ---")
@@ -213,47 +199,28 @@ def _execute_agent_node(agent_name: str, user_prompt: str, resume_text: Optional
                 "resume_text": resume_text if resume_text else "No resume provided"
             })
             
-        elif agent_name == "ResumeQAAgent":
-            print("--- EXECUTING: ResumeQAAgent ---")
-            agent_chain = create_resume_qa_chain()
-            result = agent_chain.invoke({
-                "resume_context": resume_text if resume_text else "No resume provided",
-                "question": user_prompt
-            })
+
             
         else:
             # Default to CareerAdvisor
             print("--- EXECUTING: CareerAdvisor ---")
             try:
                 agent_chain = create_career_advisor_chain()
-                print(f"--- CAREER ADVISOR INPUT: question='{user_prompt}', resume_context='{resume_text if resume_text else 'No resume provided'}' ---")
                 result = agent_chain.invoke({
                     "question": user_prompt,
                     "resume_context": resume_text if resume_text else "No resume provided"
                 })
-                print(f"--- CAREER ADVISOR RAW RESULT: {result} ---")
             except Exception as chain_error:
-                print(f"--- CAREER ADVISOR CHAIN ERROR: {chain_error} ---")
                 result = "I'm having trouble providing career advice right now. Please try again in a moment."
         
         # Return the result directly (it's already a string)
-        print(f"--- AGENT RESULT TYPE: {type(result)} ---")
-        print(f"--- AGENT RESULT LENGTH: {len(str(result)) if result else 0} ---")
-        print(f"--- AGENT RESULT PREVIEW: {str(result)[:100] if result else 'None'} ---")
-        print(f"--- AGENT RESULT STRIPPED: {str(result).strip() if result else 'None'} ---")
-        
         if result and str(result).strip():
             final_result = str(result).strip()
-            print(f"--- RETURNING RESULT: {len(final_result)} characters ---")
             return final_result
         else:
-            print("--- AGENT RETURNED EMPTY RESULT ---")
             return "I apologize, but I couldn't generate a response. Please try again."
             
     except Exception as e:
-        print(f"--- AGENT EXECUTION ERROR for {agent_name}: {e} ---")
-        traceback.print_exc()
-        
         # Fallback response with more specific error information
         if agent_name == "ResumeQAAgent":
             return "I'm having trouble accessing your resume information. Please try again or re-upload your resume."
@@ -284,8 +251,6 @@ def process_resume_file(db_session: Session, chat_session_id: int, file_content:
     Process uploaded resume file and return analysis.
     """
     try:
-        print(f"--- PROCESSING RESUME FILE ---")
-        
         # Get chat session
         chat_session = db_session.query(models.ChatSession).filter(
             models.ChatSession.id == chat_session_id
@@ -302,7 +267,7 @@ def process_resume_file(db_session: Session, chat_session_id: int, file_content:
         try:
             resume_text = extract_text_from_file(file_content, "resume.pdf")
             if not resume_text.startswith("Error:"):
-                print("--- SUCCESSFULLY EXTRACTED PDF ---")
+                pass
             else:
                 resume_text = None
         except:
@@ -313,7 +278,7 @@ def process_resume_file(db_session: Session, chat_session_id: int, file_content:
             try:
                 resume_text = extract_text_from_file(file_content, "resume.docx")
                 if not resume_text.startswith("Error:"):
-                    print("--- SUCCESSFULLY EXTRACTED DOCX ---")
+                    pass
                 else:
                     resume_text = None
             except:
@@ -324,17 +289,13 @@ def process_resume_file(db_session: Session, chat_session_id: int, file_content:
             resume_text = "Error: Could not extract text from the uploaded file. Please ensure it's a valid PDF or DOCX file."
         
         if "Error:" in resume_text:
-            print(f"--- RESUME EXTRACTION ERROR: {resume_text} ---")
             analysis_string = resume_text
         else:
-            print("--- RESUME EXTRACTION SUCCESS ---")
             try:
                 # Use the imported resume analyzer chain
                 resume_analyzer_chain = create_resume_analyzer_chain()
                 analysis_string = resume_analyzer_chain.invoke({"resume_text": resume_text})
-                print(f"--- RESUME ANALYSIS COMPLETE: {len(analysis_string)} characters ---")
             except Exception as chain_error:
-                print(f"--- RESUME ANALYZER CHAIN ERROR: {chain_error} ---")
                 analysis_string = f"Error: Could not analyze the resume. Please try again. Details: {str(chain_error)}"
         
         # Update chat session with resume text
@@ -357,9 +318,7 @@ def process_resume_file(db_session: Session, chat_session_id: int, file_content:
         try:
             db_session.add_all([human_message, ai_message])
             db_session.commit()
-            print("--- RESUME MESSAGES SAVED TO DATABASE ---")
         except Exception as db_error:
-            print(f"--- DATABASE SAVE ERROR: {db_error} ---")
             db_session.rollback()
             # Continue without failing the entire operation
         
@@ -367,8 +326,6 @@ def process_resume_file(db_session: Session, chat_session_id: int, file_content:
         return analysis_string
         
     except Exception as e:
-        print(f"--- RESUME PROCESSING ERROR: {e} ---")
-        traceback.print_exc()
         return f"Error processing resume: {str(e)}"
 
 
@@ -384,8 +341,6 @@ def get_chat_history(db_session: Session, session_id: int) -> list[models.ChatMe
         return messages
         
     except Exception as e:
-        print(f"--- CHAT HISTORY ERROR: {e} ---")
-        traceback.print_exc()
         return []
 
 
@@ -431,9 +386,6 @@ def update_chat_session_title(db_session: Session, session_id: int, new_title: s
         if chat_session:
             chat_session.title = new_title
             db_session.commit()
-            print(f"--- UPDATED SESSION TITLE: {new_title} ---")
         
     except Exception as e:
-        print(f"--- UPDATE TITLE ERROR: {e} ---")
-        traceback.print_exc()
         db_session.rollback()

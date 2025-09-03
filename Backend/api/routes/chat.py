@@ -73,16 +73,13 @@ async def create_new_chat_session(
                 )
                 db.refresh(db_session)
             except Exception as e:
-                print(f"Error processing first message: {e}")
-                traceback.print_exc()
                 # Don't fail the session creation, just log the error
+                pass
                 
         response = JSONResponse(content=schemas.ChatSession.from_orm(db_session).model_dump(mode='json'))
         return add_cors_headers(response, "https://carrer-gpt.vercel.app")
         
     except Exception as e:
-        print(f"Error creating chat session: {e}")
-        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to create chat session: {str(e)}")
 
 @router.post("/resume-analysis", response_model=schemas.ChatSession, status_code=status.HTTP_201_CREATED)
@@ -113,17 +110,15 @@ async def create_session_with_resume_analysis(
                 file_content=file_bytes
             )
         except Exception as service_error:
-            print(f"Service error in resume analysis: {service_error}")
             # Don't fail the entire request, just log the error
             # The service will handle the error and return an appropriate message
+            pass
         
         db.refresh(new_chat_session)
         response = JSONResponse(content=schemas.ChatSession.from_orm(new_chat_session).model_dump(mode='json'))
         return add_cors_headers(response, "https://carrer-gpt.vercel.app")
         
     except Exception as e:
-        print(f"Error in resume analysis: {e}")
-        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Resume analysis failed: {str(e)}")
 
 @router.post("/{session_id}/resume-analysis", response_model=schemas.ChatSession)
@@ -156,8 +151,6 @@ async def add_resume_analysis_to_session(
         return add_cors_headers(response, "https://carrer-gpt.vercel.app")
         
     except Exception as e:
-        print(f"Error adding resume to session: {e}")
-        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to add resume: {str(e)}")
 
 @router.get("/", response_model=List[schemas.ChatSession])
@@ -175,8 +168,6 @@ async def get_all_user_sessions(
         response = JSONResponse(content=[schemas.ChatSession.from_orm(s).model_dump(mode='json') for s in sessions])
         return add_cors_headers(response, "https://carrer-gpt.vercel.app")
     except Exception as e:
-        print(f"Error fetching sessions: {e}")
-        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to fetch sessions: {str(e)}")
 
 @router.get("/{session_id}", response_model=schemas.ChatSession)
@@ -205,8 +196,6 @@ async def get_chat_session(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error fetching session {session_id}: {e}")
-        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to fetch session: {str(e)}")
 
 @router.post("/{session_id}/messages/stream")
@@ -241,8 +230,6 @@ async def post_new_message_stream(
                 yield f"data: [DONE]\n\n"
                 
             except Exception as e:
-                print(f"Error during stream: {e}")
-                traceback.print_exc()
                 # Send error as a token so frontend can display it
                 error_msg = f"I apologize, but I encountered an error: {str(e)}. Please try again."
                 yield f"data: {json.dumps({'token': error_msg})}\n\n"
@@ -263,8 +250,6 @@ async def post_new_message_stream(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error in stream endpoint: {e}")
-        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Streaming failed: {str(e)}")
 
 @router.post("/stream")
@@ -308,73 +293,62 @@ async def create_new_chat_session_stream(
         if session_data.first_message:
             def event_generator():
                 try:
-                    print(f"--- Starting stream for first message: {session_data.first_message} ---")
-                    
                     # Create a separate database session for streaming to avoid session closure issues
                     stream_db = SessionLocal()
                     try:
-                         # Get the chat session in the new session to avoid persistence issues
-                         chat_session_in_stream = stream_db.query(models.ChatSession).filter(
-                             models.ChatSession.id == db_session.id
-                         ).first()
-                         
-                         if not chat_session_in_stream:
-                             raise Exception("Chat session not found in stream database")
-                         
-                         # Stream the first message response
-                         for token in chat_service.process_user_message_stream(
-                             db_session=stream_db,
-                             chat_session=chat_session_in_stream,
-                             user_prompt=session_data.first_message
-                         ):
-                             if token and token.strip():
-                                 yield f"data: {json.dumps({'token': token})}\n\n"
-                         
-                         print("--- Finished streaming tokens, now sending session data ---")
-                         
-                         # Get messages after streaming is complete
-                         try:
-                             stream_db.refresh(chat_session_in_stream)
-                             messages = stream_db.query(models.ChatMessage).filter(
-                                 models.ChatMessage.session_id == chat_session_in_stream.id
-                             ).order_by(models.ChatMessage.timestamp.asc()).all()
-                             
-                             print(f"--- Found {len(messages)} messages for session {chat_session_in_stream.id} ---")
-                             
-                             # Update session info with messages and ensure title is correct
-                             session_info["messages"] = [
-                                 {
-                                     "id": msg.id,
-                                     "session_id": msg.session_id,
-                                     "role": msg.role,
-                                     "content": msg.content,
-                                     "timestamp": msg.timestamp.isoformat() if msg.timestamp else None
-                                 } for msg in messages
-                             ]
-                             
-                             # Ensure the title is updated in the database
-                             if chat_session_in_stream.title != new_title:
-                                 chat_session_in_stream.title = new_title
-                                 stream_db.commit()
-                                 print(f"--- Updated session title to: {new_title} ---")
-                                 # Update session_info with the new title
-                                 session_info["title"] = new_title
-                                 
-                         except Exception as db_error:
-                             print(f"Error getting messages: {db_error}")
-                             # Use empty messages if we can't get them
-                             session_info["messages"] = []
-                         
-                         print(f"--- Sending session data: {session_info} ---")
-                         yield f"data: {json.dumps({'session': session_info})}\n\n"
-                         yield f"data: [DONE]\n\n"
-                         
+                        # Get the chat session in the new session to avoid persistence issues
+                        chat_session_in_stream = stream_db.query(models.ChatSession).filter(
+                            models.ChatSession.id == db_session.id
+                        ).first()
+                        
+                        if not chat_session_in_stream:
+                            raise Exception("Chat session not found in stream database")
+                        
+                        # Stream the first message response
+                        for token in chat_service.process_user_message_stream(
+                            db_session=stream_db,
+                            chat_session=chat_session_in_stream,
+                            user_prompt=session_data.first_message
+                        ):
+                            if token and token.strip():
+                                yield f"data: {json.dumps({'token': token})}\n\n"
+                        
+                        # Get messages after streaming is complete
+                        try:
+                            stream_db.refresh(chat_session_in_stream)
+                            messages = stream_db.query(models.ChatMessage).filter(
+                                models.ChatMessage.session_id == chat_session_in_stream.id
+                            ).order_by(models.ChatMessage.timestamp.asc()).all()
+                            
+                            # Update session info with messages and ensure title is correct
+                            session_info["messages"] = [
+                                {
+                                    "id": msg.id,
+                                    "session_id": msg.session_id,
+                                    "role": msg.role,
+                                    "content": msg.content,
+                                    "timestamp": msg.timestamp.isoformat() if msg.timestamp else None
+                                } for msg in messages
+                            ]
+                            
+                            # Ensure the title is updated in the database
+                            if chat_session_in_stream.title != new_title:
+                                chat_session_in_stream.title = new_title
+                                stream_db.commit()
+                                # Update session_info with the new title
+                                session_info["title"] = new_title
+                                
+                        except Exception as db_error:
+                            # Use empty messages if we can't get them
+                            session_info["messages"] = []
+                        
+                        yield f"data: {json.dumps({'session': session_info})}\n\n"
+                        yield f"data: [DONE]\n\n"
+                        
                     finally:
-                         stream_db.close()
+                        stream_db.close()
                     
                 except Exception as e:
-                    print(f"Error during first message stream: {e}")
-                    traceback.print_exc()
                     error_msg = f"I apologize, but I encountered an error: {str(e)}. Please try again."
                     yield f"data: {json.dumps({'token': error_msg})}\n\n"
                     yield f"data: [DONE]\n\n"
@@ -397,8 +371,6 @@ async def create_new_chat_session_stream(
             return add_cors_headers(response, "https://carrer-gpt.vercel.app")
         
     except Exception as e:
-        print(f"Error creating streaming session: {e}")
-        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to create session: {str(e)}")
 
 @router.put("/{session_id}", response_model=schemas.ChatSession)
@@ -426,8 +398,6 @@ async def update_chat_session(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error updating session: {e}")
-        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to update session: {str(e)}")
 
 @router.delete("/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -461,8 +431,6 @@ async def delete_chat_session(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error deleting session: {e}")
-        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to delete session: {str(e)}")
 
 # Debug endpoint to test CORS
