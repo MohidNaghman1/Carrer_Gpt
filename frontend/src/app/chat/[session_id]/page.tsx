@@ -140,19 +140,15 @@ const MessageBubble = React.memo(
                 </div>
               ) : (
                 <div className="prose prose-sm max-w-none prose-invert">
-                  {streaming ? (
-                    <div className="relative">
-                      {message.content}
-                      <span className="inline-block w-2 h-5 bg-blue-400 animate-pulse ml-1 align-middle" />
-                    </div>
-                  ) : (
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                      rehypePlugins={[rehypeRaw]}
-                      components={markdownComponents}
-                    >
-                      {message.content}
-                    </ReactMarkdown>
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    rehypePlugins={[rehypeRaw]}
+                    components={markdownComponents}
+                  >
+                    {message.content}
+                  </ReactMarkdown>
+                  {streaming && (
+                    <span className="inline-block w-2 h-5 bg-blue-400 animate-pulse ml-1 align-middle" />
                   )}
                 </div>
               )}

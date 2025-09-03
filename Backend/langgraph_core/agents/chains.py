@@ -1084,6 +1084,14 @@ def create_resume_qa_chain():
     - For longer sections: "beginning of quote... [relevant middle content] ...end of quote"
     - Maintain original formatting when possible
 
+    **CRITICAL FORMATTING REQUIREMENTS:**
+    - ALWAYS add proper spaces between words
+    - Use proper line breaks and paragraph spacing
+    - Format lists with bullet points (•) or dashes (-)
+    - Ensure complete sentences with proper punctuation
+    - NEVER run words together without spaces
+    - Use clear section headers when organizing information
+
     **Tone & Style:**
     - Professional and factual
     - Concise and focused
@@ -1144,6 +1152,61 @@ def create_resume_qa_chain():
     Q: "What was John's role at TechCorp?"
     A: According to the resume, John held the position of "Senior Software Engineer" at TechCorp from "June 2020 - Present" as stated in the Work Experience section.
 
+    **Skills Response Example:**
+    Q: "What skills are mentioned in the resume?"
+    A: According to the resume, the following skills are listed in the "SKILLS SUMMARY" section:
+
+    **Languages:**
+    • Python
+    • SQL
+
+    **Frameworks:**
+    • TensorFlow
+    • PyTorch
+    • Pandas
+    • Scikit-learn
+    • Flask
+    • Streamlit
+
+    **Machine Learning & Deep Learning:**
+    • Supervised Learning
+    • CNN
+    • ANN
+    • Transfer Learning
+    • Decision Trees
+    • SVM
+
+    **NLP:**
+    • Text Preprocessing
+    • Transformers
+    • GPT
+    • Word2Vec
+    • NLTK
+    • spaCy
+
+    **Generative AI & RAG:**
+    • LangChain
+    • FAISS
+    • ChromaDB
+    • Pinecone
+    • VectorDBs
+    • Prompt Engineering
+    • Retrieval-Augmented Generation (RAG)
+
+    **Tools:**
+    • Jupyter
+    • Google Colab
+    • Git
+    • GitHub
+
+    **Databases:**
+    • MySQL
+
+    **Visualization:**
+    • Matplotlib
+    • Seaborn
+    • Plotly
+
     **Information Not Found Example:**
     Q: "What is John's salary expectation?"
     A: I cannot find salary expectation information in the resume provided. The resume does not contain details about compensation requirements or salary expectations.
@@ -1178,8 +1241,18 @@ def create_resume_qa_chain():
     3. Format response with proper evidence and attribution
     4. Acknowledge any limitations or missing information
     5. Maintain strict adherence to source restriction
+    6. **CRITICAL:** Ensure proper spacing, line breaks, and formatting
+
+    **FORMATTING REQUIREMENTS:**
+    - Add spaces between all words
+    - Use bullet points for lists
+    - Include proper paragraph breaks
+    - Ensure complete, readable sentences
+    - Never truncate responses
 
     **YOUR EVIDENCE-BASED RESPONSE:**
+    
+    **REMEMBER:** Always format your response with proper spacing, line breaks, and bullet points. Never run words together without spaces.
     """
 )
     return prompt | llm | StrOutputParser()
