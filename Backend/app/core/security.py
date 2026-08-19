@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 from passlib.context import CryptContext
 from jose import JWTError, jwt
-from core.config import settings
+from app.core.config import settings
 # --- Configuration ---
 # You MUST change this in a real application!
 # You can generate a good secret with: openssl rand -hex 32

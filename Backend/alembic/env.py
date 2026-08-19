@@ -1,8 +1,11 @@
+import sys
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from logging.config import fileConfig
-from db.models import Base
+from app.db.models import Base
 from sqlalchemy import create_engine
 from sqlalchemy import pool
-import os
 from dotenv import load_dotenv
 
 # Load the .env file for local development. In production, Render provides these.

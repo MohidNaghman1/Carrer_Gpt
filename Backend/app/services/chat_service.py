@@ -12,11 +12,11 @@ from sqlalchemy.orm import Session
 from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 
-from db import models
-from db.database import SessionLocal
-from langgraph_core.utils.file_parser import extract_text_from_file
-from langgraph_core.graph_backend import supervisor_node
-from langgraph_core.agents.chains import (
+from app.db import models
+from app.db.database import SessionLocal
+from app.langgraph_core.utils.file_parser import extract_text_from_file
+from app.langgraph_core.nodes import supervisor_node
+from app.langgraph_core.agents.prompts import (
     create_career_advisor_chain,
     create_job_search_chain,
     create_learning_path_chain,
@@ -26,7 +26,7 @@ from langgraph_core.agents.chains import (
 
 # --- SYSTEM ARCHITECTURE OVERVIEW ---
 # This service handles all chat interactions with intelligent agent routing
-# 1. Uses supervisor_node from graph_backend.py for intelligent routing
+# 1. Uses supervisor_node from nodes.py for intelligent routing
 # 2. Executes appropriate agent chains based on routing decision
 # 3. Streams responses character by character for real-time display
 # 4. Manages database operations for chat history and resume storage
@@ -37,7 +37,7 @@ from langgraph_core.agents.chains import (
 def process_user_message_stream(db_session: Session, chat_session: models.ChatSession, user_prompt: str) -> Generator[str, None, None]:
     """
     Main streaming function that routes user messages and streams AI responses.
-    Uses the supervisor_node from graph_backend.py for intelligent routing.
+    Uses the supervisor_node from nodes.py for intelligent routing.
     """
     try:
         # Get resume text from chat session

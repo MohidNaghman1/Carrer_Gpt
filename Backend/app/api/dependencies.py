@@ -6,10 +6,10 @@ from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 
 # Import the central settings object directly
-from core.config import settings
-from db import models
-from db.database import get_db
-from db.schemas import TokenData
+from app.core.config import settings
+from app.db import models
+from app.db.database import get_db
+from app.db.schemas import TokenData
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
 

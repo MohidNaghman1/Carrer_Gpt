@@ -5,7 +5,7 @@ from sqlalchemy.orm import sessionmaker
 # This is the critical import for creating the Base
 from sqlalchemy.ext.declarative import declarative_base
 
-from core.config import settings
+from app.core.config import settings
 
 # Create the SQLAlchemy engine
 engine = create_engine(

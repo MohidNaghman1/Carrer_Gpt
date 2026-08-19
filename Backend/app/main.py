@@ -1,14 +1,8 @@
-# main.py
-import os
-import sys
-
-sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
-
 # --- Now the rest of your imports can follow ---
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from api.routes import chat, auth
-from core.config import settings 
+from app.api.routes import chat, auth
+from app.core.config import settings 
 
 app = FastAPI(
     title="CareerGPT API",

@@ -6,13 +6,13 @@ from fastapi.responses import StreamingResponse, JSONResponse
 from typing import List, Optional
 from sqlalchemy.orm import Session
 from fastapi.concurrency import run_in_threadpool
-from services import chat_service
+from app.services import chat_service
 
 # Import models, schemas, and the db session dependency
-from db import models, schemas
-from db.database import get_db, SessionLocal
+from app.db import models, schemas
+from app.db.database import get_db, SessionLocal
 # Import our new dependency
-from api.dependencies import get_current_user
+from app.api.dependencies import get_current_user
 
 router = APIRouter(
     prefix="/chat",
