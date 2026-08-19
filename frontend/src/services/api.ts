@@ -3,7 +3,13 @@ import axios from 'axios';
 import toast from 'react-hot-toast';
 
 
+// Use deployed backend or local development
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+
+// Note: Backend is configured to accept requests from:
+// - http://localhost:3000 (local development)
+// - https://carrer-gpt.vercel.app (production frontend)
+// Make sure NEXT_PUBLIC_API_BASE_URL is set in your Vercel environment variables
 
 // Create an axios instance with a base URL for our backend
 const apiClient = axios.create({
@@ -35,7 +41,7 @@ apiClient.interceptors.response.use(
     (error) => {
         const status = error?.response?.status;
         if (status === 401) {
-            try { localStorage.removeItem('accessToken'); } catch {}
+            try { localStorage.removeItem('accessToken'); } catch { }
             toast.error('Session expired. Please log in again.');
             if (typeof window !== 'undefined') {
                 window.location.href = '/login';
