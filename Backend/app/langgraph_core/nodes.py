@@ -378,51 +378,113 @@ def learning_path_node(state: AgentState) -> dict:
 
 def job_search_node(state: AgentState) -> dict:
     """
-    This agent uses a powerful LLM parser with explicit examples to reliably extract
-    the user's desired skills and location before calling the job search chain.
+    Enhanced job search agent that intelligently extracts job parameters from either:
+    1. User's uploaded resume (primary source) - extracts current role/skills
+    2. User's question (fallback) - when no resume is available
+    
+    This provides personalized job searches based on resume content.
     """
-    print("---AGENT: JobSearch (with Upgraded Smart Parsing)---")
+    print("---AGENT: JobSearch (with Resume-Aware Parsing)---")
     user_input = state["messages"][-1].content
+    resume_text = state.get("resume_text")
     
-    # --- THIS IS THE UPGRADED, BULLETPROOF PROMPT ---
-    # It uses "few-shot" prompting (providing examples) to train the LLM on the fly.
-    parser_prompt = ChatPromptTemplate.from_messages([
-        ("system",
-         "You are a data extraction specialist. Your only job is to analyze the user's request and extract the 'skills' (job title) and 'location' into a JSON object that matches the `JobSearchParams` schema. Follow the examples precisely.\n\n"
-         "--- EXAMPLES ---\n"
-         "User Request: 'find me AI Engineer jobs in Pakistan'\n"
-         "Your JSON Response: {{\"skills\": \"AI Engineer\", \"location\": \"Pakistan\"}}\n\n"
-         "User Request: 'remote software developer positions'\n"
-         "Your JSON Response: {{\"skills\": \"software developer\", \"location\": \"Remote\"}}\n\n"
-         "User Request: 'what are some data science jobs?'\n"
-         "Your JSON Response: {{\"skills\": \"data science\", \"location\": \"Not specified\"}}\n"
-         "--- END EXAMPLES ---"
-        ),
-        ("user", "User Request: \"{request}\"")
-    ])
-    
-    runnable = parser_prompt | llm_parser
-    
-    try:
-        # Step 1: Invoke the parser to get structured data.
-        parsed_params: JobSearchParams = runnable.invoke({"request": user_input})
+    # --- STRATEGY 1: Extract skills from resume if available ---
+    if resume_text:
+        print("---Resume detected. Extracting job search parameters from resume context---")
         
-        skills = parsed_params.skills
-        location = parsed_params.location
+        # Enhanced parser that considers both resume and user question
+        resume_aware_parser_prompt = ChatPromptTemplate.from_messages([
+            ("system",
+             "You are an intelligent job search parameter extractor. You have access to the user's resume and their question.\n\n"
+             "**Your Task:**\n"
+             "1. Analyze the user's RESUME to identify their current/most recent job role and key technical skills\n"
+             "2. Consider the user's QUESTION to understand location or any specific preferences\n"
+             "3. Extract the 'skills' (job title/role they're qualified for based on resume) and 'location'\n\n"
+             "**Priority Rules:**\n"
+             "- If user asks 'find jobs for me' without specifying role → Use resume's current/recent role\n"
+             "- If user specifies a role explicitly → Use user's specified role\n"
+             "- If user specifies location → Use user's location\n"
+             "- If no location specified → Use 'Not specified'\n\n"
+             "**Output Format:**\n"
+             "{{\"skills\": \"job title/role\", \"location\": \"location or Not specified\"}}\n\n"
+             "**Examples:**\n"
+             "Resume shows: Senior Software Engineer at Google\n"
+             "User asks: 'find me jobs in Pakistan'\n"
+             "Response: {{\"skills\": \"Senior Software Engineer\", \"location\": \"Pakistan\"}}\n\n"
+             "Resume shows: Data Scientist with Python, ML experience\n"
+             "User asks: 'search for AI Engineer jobs remote'\n"
+             "Response: {{\"skills\": \"AI Engineer\", \"location\": \"Remote\"}}\n"
+            ),
+            ("user", 
+             "**User's Resume (Key Information):**\n{resume_context}\n\n"
+             "**User's Question:**\n{request}\n\n"
+             "Extract job search parameters:")
+        ])
         
-        print(f"---JOB SEARCH PARSED PARAMS: Skills='{skills}', Location='{location}'---")
-
-        # Step 2: A safety check. If the parser fails to find a location, ask the user.
-        if location == "Not specified":
-            job_postings_summary = "It looks like you're searching for a job. Could you please specify a location (e.g., 'India', 'Remote', 'London')?"
-        else:
-            # Step 3: Call the main agent chain with the correctly parsed arguments.
-            job_postings_summary = job_search_agent.invoke({"skills": skills, "location": location})
-
-    except Exception as e:
-        # Step 4: This is our final safety net.
-        print(f"---JOB SEARCH PARSING FAILED: {e}---")
-        job_postings_summary = "I'm sorry, I had trouble understanding your request for a job search. Could you please clearly state the job title and location you're interested in?"
+        runnable = resume_aware_parser_prompt | llm_parser
+        
+        try:
+            parsed_params: JobSearchParams = runnable.invoke({
+                "request": user_input,
+                "resume_context": resume_text[:2000]  # First 2000 chars for context
+            })
+            
+            skills = parsed_params.skills
+            location = parsed_params.location
+            
+            print(f"---RESUME-BASED JOB SEARCH PARAMS: Skills='{skills}', Location='{location}'---")
+            
+        except Exception as e:
+            print(f"---Resume parsing failed, falling back to question parsing: {e}---")
+            # Fallback to question-only parsing
+            skills = "Not specified"
+            location = "Not specified"
+    
+    else:
+        # --- STRATEGY 2: Extract from user question only (no resume) ---
+        print("---No resume available. Extracting parameters from user question only---")
+        
+        parser_prompt = ChatPromptTemplate.from_messages([
+            ("system",
+             "You are a data extraction specialist. Your only job is to analyze the user's request and extract the 'skills' (job title) and 'location'.\n\n"
+             "--- EXAMPLES ---\n"
+             "User Request: 'find me AI Engineer jobs in Pakistan'\n"
+             "Your JSON Response: {{\"skills\": \"AI Engineer\", \"location\": \"Pakistan\"}}\n\n"
+             "User Request: 'remote software developer positions'\n"
+             "Your JSON Response: {{\"skills\": \"software developer\", \"location\": \"Remote\"}}\n\n"
+             "User Request: 'what are some data science jobs?'\n"
+             "Your JSON Response: {{\"skills\": \"data science\", \"location\": \"Not specified\"}}\n"
+             "--- END EXAMPLES ---"
+            ),
+            ("user", "User Request: \"{request}\"")
+        ])
+        
+        runnable = parser_prompt | llm_parser
+        
+        try:
+            parsed_params: JobSearchParams = runnable.invoke({"request": user_input})
+            skills = parsed_params.skills
+            location = parsed_params.location
+            
+            print(f"---QUESTION-BASED JOB SEARCH PARAMS: Skills='{skills}', Location='{location}'---")
+            
+        except Exception as e:
+            print(f"---JOB SEARCH PARSING FAILED: {e}---")
+            skills = "Not specified"
+            location = "Not specified"
+    
+    # --- Execute job search ---
+    if skills == "Not specified":
+        job_postings_summary = "To search for jobs, I need to know what role you're looking for. Please specify the job title or upload your resume so I can suggest relevant positions."
+    elif location == "Not specified":
+        job_postings_summary = f"I can search for {skills} positions. Could you please specify a location (e.g., 'Remote', 'Pakistan', 'United States')?"
+    else:
+        # Call the main agent chain with parsed arguments
+        job_postings_summary = job_search_agent.invoke({
+            "skills": skills, 
+            "location": location,
+            "resume_context": resume_text if resume_text else "No resume provided"
+        })
 
     return {"messages": [AIMessage(content=job_postings_summary)], "next": "supervisor"}
 
@@ -511,4 +573,4 @@ def final_answer_node(state: AgentState) -> dict:
         # Fallback for ResumeAnalyst, END, or IRRELEVANT which don't stream
         return {"messages": [AIMessage(content="Something went wrong.")]}
 
-
+

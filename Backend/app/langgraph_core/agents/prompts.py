@@ -819,6 +819,7 @@ def create_job_search_chain():
     - **Relevance Scoring:** Match opportunities to user skills and location preferences
     - **Evidence-Based Reporting:** Never fabricate information - work only with provided data
     - **Strategic Guidance:** Provide tactical advice based on market observations
+    - **Resume-Aware Matching:** When resume is available, assess fit based on actual experience
 
     ### **Quality Assurance Protocol:**
     ⚠️ **Critical Guidelines:**
@@ -829,6 +830,11 @@ def create_job_search_chain():
     ---
 
     ## 📊 **Search Context & Parameters**
+
+    ### **Candidate Profile:**
+    **Resume Context:** {resume_context}
+    
+    *(Use this to assess skill alignment and provide personalized fit analysis)*
 
     ### **Target Profile Analysis:**
     - **🎯 Core Skills:** {skills}
@@ -859,7 +865,9 @@ def create_job_search_chain():
     ## 🏆 **Priority Opportunity Portfolio**
 
     ### **🎯 Opportunity Ranking Methodology:**
-    *Ranked by: Skill alignment (40%) + Company reputation (25%) + Role growth potential (20%) + Compensation indicators (15%)*
+    *Ranked by: Skill alignment with YOUR resume (50%) + Company reputation (20%) + Role growth potential (20%) + Location match (10%)*
+
+    **Note:** When resume is available, opportunities are ranked based on YOUR actual experience and skills, not just generic matching.
 
     ---
 
@@ -873,17 +881,20 @@ def create_job_search_chain():
     - **📍 Work Arrangement:** [Location/Remote/Hybrid details]
 
     ##### **Strategic Fit Analysis:**
-    - **🎯 Skill Alignment Score:** [High/Moderate] - [Specific matching skills from requirements]
+    - **🎯 Skill Alignment Score:** [High/Moderate/Development Needed]
+      - **Your Matching Skills:** [List skills from YOUR resume that match requirements]
+      - **Growth Opportunities:** [Skills you'd develop in this role]
     - **💼 Core Requirements:**
-      - [Technical Requirement 1] - [Your alignment level]
-      - [Technical Requirement 2] - [Your alignment level] 
-      - [Professional Requirement 3] - [Your alignment level]
-      - [Additional Requirement 4] - [Your alignment level]
+      - [Technical Requirement 1] - **YOUR FIT:** [How your resume shows this]
+      - [Technical Requirement 2] - **YOUR FIT:** [Your relevant experience]
+      - [Professional Requirement 3] - **YOUR FIT:** [Your qualification level]
+      - [Additional Requirement 4] - **YOUR FIT:** [Your background alignment]
 
     ##### **Application Intelligence:**
     - **🔗 Application Channel:** [Direct company link if available / "Search: [Company] [Role] on LinkedIn" / Platform-specific guidance]
-    - **⚡ Strategic Advantage:** [1-2 sentences explaining why this opportunity aligns with your profile and career objectives]
-    - **🎯 Application Priority:** **HIGH** - [Reason for prioritization]
+    - **⚡ Strategic Advantage:** [1-2 sentences explaining why this opportunity aligns with YOUR profile based on YOUR resume]
+    - **📝 Application Tips Based on YOUR Background:** [Specific advice on how to position YOUR experience]
+    - **🎯 Application Priority:** **HIGH** - [Reason for prioritization based on YOUR fit]
 
     ---
 
@@ -897,7 +908,9 @@ def create_job_search_chain():
     - **📍 Work Arrangement:** [Location/Remote/Hybrid details]
 
     ##### **Strategic Fit Analysis:**
-    - **🎯 Skill Alignment Score:** [High/Moderate] - [Specific matching competencies]
+    - **🎯 Skill Alignment Score:** [High/Moderate] 
+      - **Your Matching Skills:** [Skills from YOUR resume]
+      - **Transferable Experience:** [Relevant experience from YOUR background]
     - **💼 Key Requirements:**
       - [Requirement 1] - [Alignment assessment]
       - [Requirement 2] - [Alignment assessment]

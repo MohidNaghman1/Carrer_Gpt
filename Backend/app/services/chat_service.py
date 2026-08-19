@@ -189,7 +189,8 @@ def _execute_agent_node(agent_name: str, user_prompt: str, resume_text: Optional
             agent_chain = create_job_search_chain()
             result = agent_chain.invoke({
                 "skills": skills,
-                "location": location
+                "location": location,
+                "resume_context": resume_text if resume_text else "No resume provided. Provide general job search results."
             })
             
         elif agent_name == "ResumeAnalyst":
